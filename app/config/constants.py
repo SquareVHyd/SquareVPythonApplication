@@ -1,0 +1,3 @@
+APP_NAME = "Enterprise ERP"
+APP_VERSION = "1.0.0"
+ROWS_PER_PAGE = 100

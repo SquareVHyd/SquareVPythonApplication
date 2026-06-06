@@ -94,19 +94,23 @@ class CustomerPage(QWidget):
         self.help_shortcut2 = QShortcut(QKeySequence("Ctrl+H"), self)
         self.help_shortcut2.activated.connect(self.show_shortcuts)
 
-        self.refresh_btn = QPushButton("Refresh")
+        self.refresh_btn = QPushButton("🔄 Refresh")
+        self.refresh_btn.setToolTip("Refresh customer list (Ctrl+R)")
         self.refresh_btn.clicked.connect(self.refresh_table)
 
-        self.add_btn = QPushButton("Add")
+        self.add_btn = QPushButton("➕ Add")
+        self.add_btn.setToolTip("Add new customer (Ctrl+N)")
         self.add_btn.clicked.connect(self.add_customer)
 
-        self.edit_btn = QPushButton("Edit")
+        self.edit_btn = QPushButton("✏️ Edit")
+        self.edit_btn.setToolTip("Edit selected customer (Ctrl+E)")
         self.edit_btn.clicked.connect(self.edit_customer)
 
-        self.delete_btn = QPushButton("Delete")
+        self.delete_btn = QPushButton("🗑️ Delete")
+        self.delete_btn.setToolTip("Delete selected customer (Delete)")
         self.delete_btn.clicked.connect(self.delete_customer)
 
-        self.save_as_btn = QPushButton("Save As")
+        self.save_as_btn = QPushButton("💾 Save As")
         save_menu = QMenu(self.save_as_btn)
         save_menu.addAction("Excel", self.save_table_as_excel)
         save_menu.addAction("PDF", self.save_table_as_pdf)

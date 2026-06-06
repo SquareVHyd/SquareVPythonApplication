@@ -24,10 +24,10 @@ class BaseCrudPage(QWidget):
         self.search_box = QLineEdit()
         self.search_box.setPlaceholderText("Search...")
 
-        self.refresh_btn = QPushButton("Refresh")
-        self.add_btn = QPushButton("Add")
-        self.edit_btn = QPushButton("Edit")
-        self.delete_btn = QPushButton("Delete")
+        self.refresh_btn = QPushButton("🔄 Refresh")
+        self.add_btn = QPushButton("➕ Add")
+        self.edit_btn = QPushButton("✏️ Edit")
+        self.delete_btn = QPushButton("🗑️ Delete")
         self.export_btn = QPushButton("Excel")
 
         self.top_bar.addWidget(self.title)

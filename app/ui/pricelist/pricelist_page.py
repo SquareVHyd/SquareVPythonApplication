@@ -63,10 +63,10 @@ class PriceListPage(QWidget):
             self._debounce_search
         )
 
-        self.refresh_btn = QPushButton("Refresh")
-        self.add_btn = QPushButton("Add")
-        self.edit_btn = QPushButton("Edit")
-        self.delete_btn = QPushButton("Delete")
+        self.refresh_btn = QPushButton("🔄 Refresh")
+        self.add_btn = QPushButton("➕ Add")
+        self.edit_btn = QPushButton("✏️ Edit")
+        self.delete_btn = QPushButton("🗑️ Delete")
 
         self.refresh_btn.clicked.connect(
             self.refresh_table

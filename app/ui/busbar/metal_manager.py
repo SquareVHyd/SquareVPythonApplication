@@ -72,10 +72,10 @@ class MetalManagerDialog(QDialog):
         self.search_box.setPlaceholderText("Search metals...")
         self.search_box.textChanged.connect(self.search)
         
-        self.refresh_btn = QPushButton("Refresh")
-        add_btn = QPushButton("Add")
-        self.edit_btn = QPushButton("Edit")
-        self.delete_btn = QPushButton("Delete")
+        self.refresh_btn = QPushButton("🔄 Refresh")
+        add_btn = QPushButton("➕ Add")
+        self.edit_btn = QPushButton("✏️ Edit")
+        self.delete_btn = QPushButton("🗑️ Delete")
         
         self.refresh_btn.clicked.connect(self.load_data)
         add_btn.clicked.connect(self.add_item)

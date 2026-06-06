@@ -44,10 +44,10 @@ class BusbarPage(QWidget):
         self.search_box.setPlaceholderText("Search materials...")
         self.search_box.textChanged.connect(self._debounce_search)
 
-        self.add_btn = QPushButton("Add")
-        self.edit_btn = QPushButton("Edit")
-        self.delete_btn = QPushButton("Delete")
-        self.refresh_btn = QPushButton("Refresh")
+        self.add_btn = QPushButton("➕ Add")
+        self.edit_btn = QPushButton("✏️ Edit")
+        self.delete_btn = QPushButton("🗑️ Delete")
+        self.refresh_btn = QPushButton("🔄 Refresh")
         
         self.add_btn.clicked.connect(self.add_busbar)
         self.edit_btn.clicked.connect(self.edit_busbar)

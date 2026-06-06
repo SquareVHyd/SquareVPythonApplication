@@ -196,11 +196,11 @@ class RegisterWindow(QWidget):
         # Buttons layout
         button_layout = QHBoxLayout()
 
-        self.register_button = QPushButton("REGISTER")
+        self.register_button = QPushButton("📝 REGISTER")
 
         self.register_button.clicked.connect(self.register)
 
-        self.cancel_button = QPushButton("CANCEL")
+        self.cancel_button = QPushButton("❌ CANCEL")
 
         self.cancel_button.setObjectName("cancelBtn")
 

@@ -11,7 +11,7 @@ def main():
 
     window = LoginWindow()
 
-    window.show()
+    window.showMaximized()
 
     sys.exit(app.exec())
 

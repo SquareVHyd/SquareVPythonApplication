@@ -38,16 +38,20 @@ class ModuleViewPage(QWidget):
         self.search_box.setPlaceholderText("Search Module Type / Make / SWG...")
         self.search_box.textChanged.connect(self._debounce_search)
 
-        self.refresh_btn = QPushButton("Refresh")
+        self.refresh_btn = QPushButton("🔄 Refresh")
+        self.refresh_btn.setToolTip("Refresh modules list (Ctrl+R)")
         self.refresh_btn.clicked.connect(self.refresh_table)
 
-        self.add_btn = QPushButton("Add")
+        self.add_btn = QPushButton("➕ Add")
+        self.add_btn.setToolTip("Add new module type (Ctrl+N)")
         self.add_btn.clicked.connect(self._add_module_type)
 
-        self.edit_btn = QPushButton("Edit")
+        self.edit_btn = QPushButton("✏️ Edit")
+        self.edit_btn.setToolTip("Edit selected module type (Ctrl+E)")
         self.edit_btn.clicked.connect(self._edit_module_type)
 
-        self.delete_btn = QPushButton("Delete")
+        self.delete_btn = QPushButton("🗑️ Delete")
+        self.delete_btn.setToolTip("Delete selected module type (Delete)")
         self.delete_btn.clicked.connect(self._delete_module_type)
 
         header.addWidget(title)
@@ -69,7 +73,7 @@ class ModuleViewPage(QWidget):
         self.make_filter.setPlaceholderText("Filter Make...")
         self.make_filter.textChanged.connect(self._debounce_search)
 
-        self.clear_filters_btn = QPushButton("Clear All Filters")
+        self.clear_filters_btn = QPushButton("🧹 Clear All Filters")
         self.clear_filters_btn.clicked.connect(self.clear_all_filters)
 
         filter_row.addStretch()

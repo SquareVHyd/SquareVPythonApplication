@@ -39,7 +39,8 @@ class PriceListLookupDialog(QDialog):
         self.search_box.textChanged.connect(self._debounce_search)
         row1.addWidget(self.search_box)
 
-        self.refresh_btn = QPushButton("Refresh")
+        self.refresh_btn = QPushButton("🔄 Refresh")
+        self.refresh_btn.setToolTip("Refresh price list items (Ctrl+R)")
         self.refresh_btn.clicked.connect(self.refresh_table)
         row1.addWidget(self.refresh_btn)
         search_layout.addLayout(row1)
@@ -57,7 +58,7 @@ class PriceListLookupDialog(QDialog):
         self.make_filter.setPlaceholderText("Filter Make...")
         self.make_filter.textChanged.connect(self._debounce_search)
         
-        self.clear_filters_btn = QPushButton("Clear All Filters")
+        self.clear_filters_btn = QPushButton("🧹 Clear All Filters")
         self.clear_filters_btn.clicked.connect(self.clear_all_filters)
 
         row2.addWidget(QLabel("Narrow by:"))

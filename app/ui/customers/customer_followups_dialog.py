@@ -39,10 +39,14 @@ class CustomerFollowupsDialog(QDialog):
         self.search_box = QLineEdit()
         self.search_box.setPlaceholderText("Search followups...")
 
-        self.refresh_btn = QPushButton("Refresh")
-        self.add_btn = QPushButton("Add")
-        self.edit_btn = QPushButton("Edit")
-        self.delete_btn = QPushButton("Delete")
+        self.refresh_btn = QPushButton("🔄 Refresh")
+        self.refresh_btn.setToolTip("Refresh followups (Ctrl+R)")
+        self.add_btn = QPushButton("➕ Add")
+        self.add_btn.setToolTip("Add followup (Ctrl+N)")
+        self.edit_btn = QPushButton("✏️ Edit")
+        self.edit_btn.setToolTip("Edit selected followup (Ctrl+E)")
+        self.delete_btn = QPushButton("🗑️ Delete")
+        self.delete_btn.setToolTip("Delete selected followup (Delete)")
 
         header.addWidget(self.search_box)
         header.addWidget(self.refresh_btn)

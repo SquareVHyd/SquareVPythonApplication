@@ -70,19 +70,19 @@ class UserManagementPage(QWidget):
         # Buttons layout
         button_layout = QHBoxLayout()
 
-        self.refresh_button = QPushButton("Refresh")
+        self.refresh_button = QPushButton("🔄 Refresh")
 
         self.refresh_button.clicked.connect(self.load_users)
 
-        self.add_admin_button = QPushButton("Create Admin")
+        self.add_admin_button = QPushButton("🛡️ Create Admin")
 
         self.add_admin_button.clicked.connect(self.open_add_admin_dialog)
 
-        self.edit_button = QPushButton("Edit User")
+        self.edit_button = QPushButton("✏️ Edit User")
 
         self.edit_button.clicked.connect(self.edit_user)
 
-        self.delete_button = QPushButton("Delete User")
+        self.delete_button = QPushButton("🗑️ Delete User")
 
         self.delete_button.clicked.connect(self.delete_user)
 
@@ -156,9 +156,9 @@ class UserManagementPage(QWidget):
         # Buttons
         button_layout = QHBoxLayout()
 
-        create_button = QPushButton("Create")
+        create_button = QPushButton("✅ Create")
 
-        cancel_button = QPushButton("Cancel")
+        cancel_button = QPushButton("❌ Cancel")
 
         button_layout.addWidget(create_button)
         button_layout.addWidget(cancel_button)

@@ -46,7 +46,8 @@ class ModuleItemsDialog(QDialog):
         self.search_box.textChanged.connect(self._debounce_search)
         top_layout.addWidget(self.search_box, 1)
 
-        self.add_btn = QPushButton("Add New Item")
+        self.add_btn = QPushButton("➕ Add New Item")
+        self.add_btn.setToolTip("Add New Item (Ctrl+N)")
         self.add_btn.clicked.connect(self._add_items)
         top_layout.addWidget(self.add_btn)
         
@@ -66,11 +67,13 @@ class ModuleItemsDialog(QDialog):
         
         # Bottom buttons
         btn_layout = QHBoxLayout()
-        self.edit_btn = QPushButton("Edit Qty/SEQ")
+        self.edit_btn = QPushButton("✏️ Edit Qty/SEQ")
+        self.edit_btn.setToolTip("Edit Quantity or Sequence (Ctrl+E)")
         self.edit_btn.clicked.connect(self._edit_item)
         btn_layout.addWidget(self.edit_btn) # Add edit button to layout
         
-        self.remove_btn = QPushButton("Remove Selected")
+        self.remove_btn = QPushButton("🗑️ Remove Selected")
+        self.remove_btn.setToolTip("Remove Selected Items (Delete)")
         self.remove_btn.clicked.connect(self._remove_items)
         
         btn_layout.addWidget(self.edit_btn)

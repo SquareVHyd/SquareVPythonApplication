@@ -17,6 +17,7 @@ from app.ui.customers.customer_page import CustomerPage
 from app.ui.modules.module_view_page import ModuleViewPage
 from app.ui.busbar.busbar_page import BusbarPage
 from app.config.ui_state import UIStateManager
+from app.ui.dashboard.dashboard_page import DashboardPage
 
 
 class MainWindow(QMainWindow):
@@ -24,7 +25,10 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("Enterprise ERP")
+        self.setWindowTitle("SQV Engineering")
+        # Track the utilities window instance to prevent garbage collection
+        self.utilities_window = None
+        self.tools_window = None
         
         # Restore window geometry from last session
         geom = UIStateManager.get_window_geometry()
@@ -41,23 +45,48 @@ class MainWindow(QMainWindow):
         sidebar_layout.setContentsMargins(20, 20, 20, 20)
         sidebar_layout.setSpacing(12)
 
-        title = QLabel("Enterprise ERP")
+        title = QLabel("Menu")
         title.setObjectName("appTitle")
         title.setAlignment(Qt.AlignCenter)
 
-        self.dashboard_btn = QPushButton("Dashboard")
-        self.customers_btn = QPushButton("Customers")
-        self.pricelist_btn = QPushButton("Price List")
-        self.modules_btn = QPushButton("Modules")
-        self.busbar_btn = QPushButton("Busbar Materials")
+        self.shortcuts_tip = (
+            "<b>Keyboard Shortcuts:</b><br>"
+            "F1 / Ctrl+H - Show help<br>"
+            "Ctrl+F - Focus search box<br>"
+            "Ctrl+R - Refresh current table<br>"
+            "Ctrl+N - Add new record<br>"
+            "Ctrl+E - Edit selected record<br>"
+            "Delete - Delete selected record<br>"
+            "Ctrl+S - Save current table as Excel<br>"
+            "Ctrl+P - Export current table to PDF"
+        )
+
+        self.dashboard_btn = QPushButton("📊 Dashboard")
+        self.customers_btn = QPushButton("👥 Customers")
+        self.pricelist_btn = QPushButton("🧾 Price List")
+        self.modules_btn = QPushButton("📚 Modules")
+        self.busbar_btn = QPushButton("⚡ Busbar Materials")
+        self.utilities_btn = QPushButton("🔧 Utilities")
+        self.tools_btn = QPushButton("🛠️ Tools")
+
+        self.dashboard_btn.setToolTip(self.shortcuts_tip)
+        self.customers_btn.setToolTip(self.shortcuts_tip)
+        self.pricelist_btn.setToolTip(self.shortcuts_tip)
+        self.modules_btn.setToolTip(self.shortcuts_tip)
+        self.busbar_btn.setToolTip(self.shortcuts_tip)
+        self.utilities_btn.setToolTip(self.shortcuts_tip)
+        self.tools_btn.setToolTip(self.shortcuts_tip)
 
         self.dashboard_btn.clicked.connect(self.show_dashboard)
         self.customers_btn.clicked.connect(self.show_customers)
         self.pricelist_btn.clicked.connect(self.show_pricelist)
         self.modules_btn.clicked.connect(self.show_modules)
         self.busbar_btn.clicked.connect(self.show_busbar)
+        self.utilities_btn.clicked.connect(self.show_utilities)
+        self.tools_btn.clicked.connect(self.show_tools)
 
-        self.help_btn = QPushButton("Help")
+        self.help_btn = QPushButton("❓ Help")
+        self.help_btn.setToolTip(self.shortcuts_tip)
         self.help_btn.clicked.connect(self.show_shortcuts)
 
         sidebar_layout.addWidget(title)
@@ -66,17 +95,16 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(self.pricelist_btn)
         sidebar_layout.addWidget(self.modules_btn)
         sidebar_layout.addWidget(self.busbar_btn)
+        sidebar_layout.addWidget(self.utilities_btn)
+        sidebar_layout.addWidget(self.tools_btn)
         sidebar_layout.addWidget(self.help_btn)
         sidebar_layout.addStretch()
 
+        from app.ui.dashboard.dashboard_page import DashboardPage
         self.pages = QStackedWidget()
-        self.dashboard_page = QLabel(
-            "Welcome to Enterprise ERP\n\nUse the sidebar to open Customers or States management."
-        )
-        self.dashboard_page.setAlignment(Qt.AlignCenter)
-        self.dashboard_page.setWordWrap(True)
+        self.pages.addWidget(DashboardPage())
+       
 
-        self.pages.addWidget(self.dashboard_page)
         self.pages.addWidget(CustomerPage())
         self.pages.addWidget(PriceListPage())
         self.pages.addWidget(ModuleViewPage())
@@ -96,9 +124,8 @@ class MainWindow(QMainWindow):
             "#appTitle { font-size: 20px; font-weight: bold; margin-bottom: 16px; }"
         )
         
-        # Restore last viewed page
-        last_page = UIStateManager.get_current_page()
-        self.pages.setCurrentIndex(last_page)
+        # Always open the dashboard page on login/startup
+        self.pages.setCurrentIndex(0)
 
 
     def closeEvent(self, event):
@@ -159,3 +186,40 @@ class MainWindow(QMainWindow):
     def show_busbar(self):
         self.pages.setCurrentIndex(4)
         UIStateManager.save_current_page(4)
+
+    def show_utilities(self):
+        """Opens the Utilities window and ensures it comes to the front."""
+        from app.ui.utilities_window import UtilitiesWindow
+        
+        # Robust check to see if the window was previously closed/destroyed
+        if self.utilities_window is not None:
+            try:
+                # Accessing windowTitle() will trigger a RuntimeError if the C++ object is deleted
+                _ = self.utilities_window.windowTitle()
+            except RuntimeError:
+                self.utilities_window = None
+
+        if self.utilities_window is None:
+            self.utilities_window = UtilitiesWindow(self)
+            
+        self.utilities_window.show()
+        # Bring to front and give focus if already open
+        self.utilities_window.raise_()
+        self.utilities_window.activateWindow()
+
+    def show_tools(self):
+        """Opens the Tools window and ensures it comes to the front."""
+        from app.ui.tools_window import ToolsWindow
+
+        if self.tools_window is not None:
+            try:
+                _ = self.tools_window.windowTitle()
+            except RuntimeError:
+                self.tools_window = None
+
+        if self.tools_window is None:
+            self.tools_window = ToolsWindow(self)
+            
+        self.tools_window.show()
+        self.tools_window.raise_()
+        self.tools_window.activateWindow()

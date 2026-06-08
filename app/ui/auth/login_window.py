@@ -120,12 +120,14 @@ class LoginWindow(QWidget):
 
     def setup_ui(self):
         self.setWindowTitle("Square V Engineering - Login")
-        self.setStyleSheet("background-color: #f8fafc;")
+        self.setStyleSheet("background-color: #f8fafc; color:#ff0000;")
        #self.showMaximized()
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
+
+        main_layout.addStretch()
 
         # --- HEADER SECTION (15-20% of screen) ---
         info_panel = QFrame()
@@ -137,7 +139,7 @@ class LoginWindow(QWidget):
         # Company Details
         self.logo_lbl = QLabel("SQUARE V ENGINEERING")
         self.logo_lbl.setAlignment(Qt.AlignCenter)
-        self.logo_lbl.setStyleSheet("font-weight: 800; color: #1e3a8a; border: none;font-size: 30px;")
+        self.logo_lbl.setStyleSheet("font-weight: 800; color: #ff0000; border: none;font-size: 30px;")
         info_layout.addWidget(self.logo_lbl)
 
         address_text = (
@@ -167,7 +169,7 @@ class LoginWindow(QWidget):
         """)
         info_layout.addWidget(login_title)
 
-        main_layout.addWidget(info_panel, 1) # Header stretch
+        main_layout.addWidget(info_panel)
 
         # --- MAIN SECTION: Login Form centered ---
         content_area = QWidget()
@@ -233,7 +235,9 @@ class LoginWindow(QWidget):
 
         content_layout.setAlignment(Qt.AlignCenter)
         content_layout.addWidget(login_panel)
-        main_layout.addWidget(content_area, 4) # Content area stretch (80%)
+        main_layout.addWidget(content_area)
+
+        main_layout.addStretch()
 
     def login(self):
         username = self.username_input.text().strip()

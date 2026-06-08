@@ -1,3 +1,4 @@
+import math
 from sqlalchemy import text
 
 from app.config.database import get_session
@@ -91,7 +92,10 @@ class PriceListRepository:
     ):
         # Recalculate derived fields to maintain database consistency
         with get_session() as session:
-            calc_net_price = float(list_price or 0) * (1 - float(discount_percent or 0) / 100)
+            # discount_percent is stored as a fraction (e.g., 0.1 for 10%)
+            # We convert it back to a percentage to apply the requested formula
+            discount_val = float(discount_percent or 0) * 100
+            calc_net_price = math.ceil(float(list_price or 0) * (1 - discount_val / 100) * 10000) / 10000
             calc_total_amount = calc_net_price * int(used_qty or 0)
 
             query = text(
@@ -110,7 +114,7 @@ class PriceListRepository:
                         "item_description": item_description,
                         "model": model,
                         "list_price": list_price,
-                        "discount_percent": float(discount_percent or 0),
+                        "discount_percent": round(float(discount_percent or 0), 4),
                         "net_price": calc_net_price,
                         "used_qty": int(used_qty or 0),
                         "total_amount": calc_total_amount,
@@ -141,7 +145,10 @@ class PriceListRepository:
     ):
         with get_session() as session:
             # Recalculate derived fields to maintain database consistency
-            calc_net_price = float(list_price or 0) * (1 - float(discount_percent or 0) / 100)
+            # discount_percent is stored as a fraction (e.g., 0.1 for 10%)
+            # We convert it back to a percentage to apply the requested formula
+            discount_val = float(discount_percent or 0) * 100
+            calc_net_price = math.ceil(float(list_price or 0) * (1 - discount_val / 100) * 10000) / 10000
             calc_total_amount = calc_net_price * int(used_qty or 0)
 
             query = text(
@@ -168,7 +175,7 @@ class PriceListRepository:
                         "item_description": item_description,
                         "model": model,
                         "list_price": list_price,
-                        "discount_percent": float(discount_percent or 0),
+                        "discount_percent": round(float(discount_percent or 0), 4),
                         "calc_net_price": calc_net_price, # Changed from net_price to calc_net_price
                         "used_qty": int(used_qty or 0),
                         "calc_total_amount": calc_total_amount, # Changed from total_amount to calc_total_amount
@@ -246,6 +253,16 @@ class PriceListRepository:
             try:
                 session.execute(query, {"name": make_name})
                 session.commit()
+            except Exception as e:
+                session.rollback()
+                raise e
+
+    def get_pricelist_view_data(self):
+        """Fetches all records from the vwPriceList view."""
+        with get_session() as session:
+            try:
+                result = session.execute(text('SELECT * FROM public."vwPriceList"'))
+                return result.fetchall(), result.keys()
             except Exception as e:
                 session.rollback()
                 raise e

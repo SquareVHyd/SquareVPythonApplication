@@ -1,3 +1,4 @@
+import math
 from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -156,7 +157,7 @@ class PriceListForm(QDialog):
             )
 
             self.discount.setText(
-                str(price_item[6] or "")
+                f"{(float(price_item[6]) * 100):.2f}" if price_item[6] is not None else ""
             )
 
             self.net_price.setText(
@@ -184,10 +185,10 @@ class PriceListForm(QDialog):
     def _calculate_prices(self):
         try:
             lp = float(self.list_price.text() or 0)
-            dp = float(self.discount.text() or 0)
-            np = lp * (1 - dp / 100)
+            dp = round(float(self.discount.text() or 0), 2)
+            np = math.ceil(lp * (1 - dp / 100) * 10000) / 10000
             self.net_price.blockSignals(True)
-            self.net_price.setText(f"{np:.2f}")
+            self.net_price.setText(f"{np:.4f}")
             self.net_price.blockSignals(False)
             self._calculate_total()
         except ValueError:
@@ -299,17 +300,24 @@ class PriceListForm(QDialog):
 
         try:
 
-            if not self.description.text().strip():
+            desc = self.description.text().strip()
+            model = self.model.text().strip()
+            
+            if not desc:
+                raise ValueError("Item Description is required")
 
-                raise ValueError(
-                    "Item Description is required"
-                )
+            if not model:
+                raise ValueError("Model is required")
 
-            if not self.model.text().strip():
-
-                raise ValueError(
-                    "Model is required"
-                )
+            # Database Pre-validation: Ensure numeric strings are actually numbers
+            # to avoid database transaction crashes.
+            try:
+                float(self.list_price.text() or 0)
+                float(self.discount.text() or 0)
+                float(self.net_price.text() or 0)
+                float(self.used_qty.text() or 0)
+            except ValueError:
+                raise ValueError("List Price, Discount, Net Price, and Qty must be valid numbers")
 
         except Exception as e:
 
@@ -337,13 +345,13 @@ class PriceListForm(QDialog):
                 float(self.list_price.text() or 0),
 
             "discount_percent":
-                float(self.discount.text() or 0),
+                round(float(self.discount.text() or 0), 2) / 100.0,
 
             "net_price":
                 float(self.net_price.text() or 0),
 
             "used_qty":
-                int(self.used_qty.text() or 0),
+                float(self.used_qty.text() or 0),
 
             "total_amount":
                 float(self.total_amount.text() or 0),

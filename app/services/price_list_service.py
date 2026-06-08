@@ -75,3 +75,7 @@ class PriceListService:
 
     def create_make(self, make_name):
         return self.repository.create_make(make_name)
+
+    def get_pricelist_view_data(self):
+        """Pass-through to repository to fetch data from vwPriceList."""
+        return self.repository.get_pricelist_view_data()

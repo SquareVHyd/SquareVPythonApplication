@@ -39,19 +39,19 @@ class ModuleViewPage(QWidget):
         self.search_box.textChanged.connect(self._debounce_search)
 
         self.refresh_btn = QPushButton("🔄 Refresh")
-        self.refresh_btn.setToolTip("Refresh modules list (Ctrl+R)")
+        self.refresh_btn.setToolTip("(Ctrl+R)")
         self.refresh_btn.clicked.connect(self.refresh_table)
 
         self.add_btn = QPushButton("➕ Add")
-        self.add_btn.setToolTip("Add new module type (Ctrl+N)")
+        self.add_btn.setToolTip("(Ctrl+N)")
         self.add_btn.clicked.connect(self._add_module_type)
 
         self.edit_btn = QPushButton("✏️ Edit")
-        self.edit_btn.setToolTip("Edit selected module type (Ctrl+E)")
+        self.edit_btn.setToolTip("(Ctrl+E)")
         self.edit_btn.clicked.connect(self._edit_module_type)
 
         self.delete_btn = QPushButton("🗑️ Delete")
-        self.delete_btn.setToolTip("Delete selected module type (Delete)")
+        self.delete_btn.setToolTip("(Delete)")
         self.delete_btn.clicked.connect(self._delete_module_type)
 
         header.addWidget(title)
@@ -73,13 +73,14 @@ class ModuleViewPage(QWidget):
         self.make_filter.setPlaceholderText("Filter Make...")
         self.make_filter.textChanged.connect(self._debounce_search)
 
-        self.clear_filters_btn = QPushButton("🧹 Clear All Filters")
+        self.clear_filters_btn = QPushButton("🧹 Clear")
+        self.clear_filters_btn.setFixedWidth(80)
         self.clear_filters_btn.clicked.connect(self.clear_all_filters)
 
-        filter_row.addStretch()
-        filter_row.addWidget(QLabel("Narrow by:"))
-        filter_row.addWidget(self.type_filter)
-        filter_row.addWidget(self.make_filter)
+        # Align filters with columns: ID (0), Type (1), Make (2)
+        filter_row.addWidget(QLabel("Filters:"), 0) # Placeholder for ID column
+        filter_row.addWidget(self.type_filter, 2)    # Spans Type column
+        filter_row.addWidget(self.make_filter, 2)    # Spans Make column
         filter_row.addWidget(self.clear_filters_btn)
         layout.addLayout(filter_row)
 
@@ -279,7 +280,7 @@ class ModuleViewPage(QWidget):
             # Check general keyword
             match_general = True
             if keyword:
-                search_content = f"{row[1] or ''} {row[2] or ''} {row[3] or ''}".lower()
+                search_content = f"{row[0] or ''} {row[1] or ''} {row[2] or ''} {row[3] or ''}".lower()
                 match_general = keyword in search_content
 
             # Check individual filters (AND logic)

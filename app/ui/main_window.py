@@ -16,6 +16,7 @@ from app.ui.pricelist.pricelist_page import PriceListPage
 from app.ui.customers.customer_page import CustomerPage
 from app.ui.modules.module_view_page import ModuleViewPage
 from app.ui.busbar.busbar_page import BusbarPage
+from app.ui.master.master_data_page import MasterDataPage
 from app.config.ui_state import UIStateManager
 from app.ui.dashboard.dashboard_page import DashboardPage
 
@@ -68,14 +69,14 @@ class MainWindow(QMainWindow):
         self.busbar_btn = QPushButton("⚡ Busbar Materials")
         self.utilities_btn = QPushButton("🔧 Utilities")
         self.tools_btn = QPushButton("🛠️ Tools")
+        self.master_btn = QPushButton("📋 Master Data")
 
         self.dashboard_btn.setToolTip(self.shortcuts_tip)
         self.customers_btn.setToolTip(self.shortcuts_tip)
         self.pricelist_btn.setToolTip(self.shortcuts_tip)
         self.modules_btn.setToolTip(self.shortcuts_tip)
         self.busbar_btn.setToolTip(self.shortcuts_tip)
-        self.utilities_btn.setToolTip(self.shortcuts_tip)
-        self.tools_btn.setToolTip(self.shortcuts_tip)
+        self.master_btn.setToolTip("View raw database tables")
 
         self.dashboard_btn.clicked.connect(self.show_dashboard)
         self.customers_btn.clicked.connect(self.show_customers)
@@ -84,10 +85,16 @@ class MainWindow(QMainWindow):
         self.busbar_btn.clicked.connect(self.show_busbar)
         self.utilities_btn.clicked.connect(self.show_utilities)
         self.tools_btn.clicked.connect(self.show_tools)
+        self.master_btn.clicked.connect(self.show_master)
 
         self.help_btn = QPushButton("❓ Help")
         self.help_btn.setToolTip(self.shortcuts_tip)
         self.help_btn.clicked.connect(self.show_shortcuts)
+
+        self.quit_btn = QPushButton("🚪 Quit Application")
+        self.quit_btn.setObjectName("quitButton")
+        self.quit_btn.setToolTip("Save state and exit the application")
+        self.quit_btn.clicked.connect(self.close)
 
         sidebar_layout.addWidget(title)
         sidebar_layout.addWidget(self.dashboard_btn)
@@ -95,10 +102,13 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(self.pricelist_btn)
         sidebar_layout.addWidget(self.modules_btn)
         sidebar_layout.addWidget(self.busbar_btn)
+        sidebar_layout.addWidget(self.master_btn)
         sidebar_layout.addWidget(self.utilities_btn)
         sidebar_layout.addWidget(self.tools_btn)
         sidebar_layout.addWidget(self.help_btn)
+        sidebar_layout.addWidget(self.quit_btn)
         sidebar_layout.addStretch()
+        
 
         from app.ui.dashboard.dashboard_page import DashboardPage
         self.pages = QStackedWidget()
@@ -109,6 +119,7 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(PriceListPage())
         self.pages.addWidget(ModuleViewPage())
         self.pages.addWidget(BusbarPage())
+        self.pages.addWidget(MasterDataPage())
 
         self.shortcut_help = QShortcut(QKeySequence("F1"), self)
         self.shortcut_help.activated.connect(self.show_shortcuts)
@@ -121,7 +132,8 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(main_container)
         self.setStyleSheet(
             "#sidebar { background-color: #f0f2f5; } "
-            "#appTitle { font-size: 20px; font-weight: bold; margin-bottom: 16px; }"
+            "#appTitle { font-size: 20px; font-weight: bold; margin-bottom: 16px; } "
+            "#quitButton { color: #d32f2f; font-weight: bold; }"
         )
         
         # Always open the dashboard page on login/startup
@@ -186,6 +198,10 @@ class MainWindow(QMainWindow):
     def show_busbar(self):
         self.pages.setCurrentIndex(4)
         UIStateManager.save_current_page(4)
+
+    def show_master(self):
+        self.pages.setCurrentIndex(5)
+        UIStateManager.save_current_page(5)
 
     def show_utilities(self):
         """Opens the Utilities window and ensures it comes to the front."""

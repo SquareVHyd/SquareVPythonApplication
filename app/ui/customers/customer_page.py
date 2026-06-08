@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QTextEdit,
     QMenu,
+    QStatusBar
 )
 
 
@@ -95,22 +96,28 @@ class CustomerPage(QWidget):
         self.help_shortcut2.activated.connect(self.show_shortcuts)
 
         self.refresh_btn = QPushButton("🔄 Refresh")
-        self.refresh_btn.setToolTip("Refresh customer list (Ctrl+R)")
+        self.refresh_btn.setToolTip("(Ctrl+R)")
         self.refresh_btn.clicked.connect(self.refresh_table)
 
         self.add_btn = QPushButton("➕ Add")
-        self.add_btn.setToolTip("Add new customer (Ctrl+N)")
+        self.add_btn.setToolTip("(Ctrl+N)")
         self.add_btn.clicked.connect(self.add_customer)
 
         self.edit_btn = QPushButton("✏️ Edit")
-        self.edit_btn.setToolTip("Edit selected customer (Ctrl+E)")
+        self.edit_btn.setToolTip("(Ctrl+E)")
         self.edit_btn.clicked.connect(self.edit_customer)
 
         self.delete_btn = QPushButton("🗑️ Delete")
-        self.delete_btn.setToolTip("Delete selected customer (Delete)")
+        self.delete_btn.setToolTip("(Delete)")
         self.delete_btn.clicked.connect(self.delete_customer)
 
+        self.contacts_btn = QPushButton("📇 Contacts")
+        self.contacts_btn.setToolTip("View Customer Contacts (Ctrl+Shift+C)")
+        self.contacts_btn.clicked.connect(self.open_contacts_for_selected)
+        self.contacts_shortcut = QShortcut(QKeySequence("Ctrl+Shift+C"), self, activated=self.open_contacts_for_selected)
+
         self.save_as_btn = QPushButton("💾 Save As")
+        self.save_as_btn.setToolTip("(Ctrl+Shift+S)")
         save_menu = QMenu(self.save_as_btn)
         save_menu.addAction("Excel", self.save_table_as_excel)
         save_menu.addAction("PDF", self.save_table_as_pdf)
@@ -125,6 +132,7 @@ class CustomerPage(QWidget):
         header_layout.addWidget(self.add_btn)
         header_layout.addWidget(self.edit_btn)
         header_layout.addWidget(self.delete_btn)
+        header_layout.addWidget(self.contacts_btn)
         header_layout.addWidget(self.save_as_btn)
 
         self.layout.addLayout(header_layout)
@@ -158,6 +166,38 @@ class CustomerPage(QWidget):
         self.table.verticalHeader().setVisible(True) # Set visible to allow dragging
 
         self.layout.addWidget(self.table)
+
+        # Footer Status Bar for selection statistics (Excel style)
+        self.status_bar = QStatusBar()
+        self.status_bar.setStyleSheet("QStatusBar { background-color: #f8fafc; color: #475569; border-top: 1px solid #e2e8f0; font-size: 11px; }")
+        self.layout.addWidget(self.status_bar)
+
+        self.table.itemSelectionChanged.connect(self._update_status_bar_stats)
+
+    def _update_status_bar_stats(self):
+        selected_items = self.table.selectedItems()
+        if not selected_items:
+            self.status_bar.clearMessage()
+            return
+
+        count = len(selected_items)
+        total_sum = 0.0
+        numeric_found = False
+
+        for item in selected_items:
+            try:
+                # Clean string for float conversion (remove currency/commas)
+                val = float(item.text().replace('₹', '').replace(',', '').strip())
+                total_sum += val
+                numeric_found = True
+            except (ValueError, TypeError):
+                continue
+
+        msg = f"Count: {count}"
+        if numeric_found:
+            msg += f"  |  Sum: {total_sum:,.2f}"
+        
+        self.status_bar.showMessage(msg)
 
     def load_customers(self):
         """Load customers (called after add/edit/delete operations)."""
@@ -833,6 +873,15 @@ class CustomerPage(QWidget):
         if dialog.exec() == QDialog.Accepted:
             self.load_customers()
 
+    def open_contacts_for_selected(self):
+        customer = self.get_selected_customer()
+        if not customer:
+            QMessageBox.warning(self, "Selection Required", "Please select a customer to view contacts.")
+            return
+        
+        dialog = CustomerContactsDialog(customer[0], self)
+        dialog.exec()
+
     def edit_customer(self):
         customer = self.get_selected_customer()
         if not customer:
@@ -849,8 +898,8 @@ class CustomerPage(QWidget):
         if not item:
             return
 
-        # only when clicking ID column
-        if item.column() != 0:
+        # Now triggers on ID (0) or Name (1)
+        if item.column() not in (0, 1):
             return
 
         menu = QMenu(self)
@@ -865,7 +914,7 @@ class CustomerPage(QWidget):
 
         if action == view_contacts_action:
 
-            customer_id = int(item.text())
+            customer_id = int(self.table.item(item.row(), 0).text())
 
             dialog = CustomerContactsDialog(
                 customer_id,

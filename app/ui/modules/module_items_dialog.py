@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton, 
-    QLineEdit, QLabel, QAbstractItemView, QMessageBox, QComboBox, QHeaderView, QInputDialog
+    QLineEdit, QLabel, QAbstractItemView, QMessageBox, QComboBox, QHeaderView, QInputDialog, QStatusBar
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QShortcut, QKeySequence
@@ -59,18 +59,33 @@ class ModuleItemsDialog(QDialog):
         self.table.setHorizontalHeaderLabels([ # These labels should match the query in ModuleService.get_items_by_module_type
             "SEQNo", "Item ID", "Description", "Qty", "ModuleItemID"
         ])
+        self.table.hideColumn(0) # Hide SEQNo column as per request
         self.table.hideColumn(4)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSortingEnabled(True)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionsMovable(True)
+
+        # Enable adjustable rows via vertical header
+        self.table.verticalHeader().setSectionsMovable(True)
+        self.table.verticalHeader().sectionMoved.connect(self._on_row_moved)
+
+        # Update sequence numbers when column order changes or table is sorted
+        self.table.horizontalHeader().sectionMoved.connect(self._on_row_moved)
+        self.table.horizontalHeader().sortIndicatorChanged.connect(lambda: self._update_visual_indices())
+
         layout.addWidget(self.table)
         
+        # Footer Status Bar for selection statistics
+        self.status_bar = QStatusBar()
+        self.status_bar.setStyleSheet("QStatusBar { background-color: #f8fafc; color: #475569; border-top: 1px solid #e2e8f0; font-size: 11px; }")
+        layout.addWidget(self.status_bar)
+
         # Bottom buttons
         btn_layout = QHBoxLayout()
         self.edit_btn = QPushButton("✏️ Edit Qty/SEQ")
         self.edit_btn.setToolTip("Edit Quantity or Sequence (Ctrl+E)")
         self.edit_btn.clicked.connect(self._edit_item)
-        btn_layout.addWidget(self.edit_btn) # Add edit button to layout
         
         self.remove_btn = QPushButton("🗑️ Remove Selected")
         self.remove_btn.setToolTip("Remove Selected Items (Delete)")
@@ -81,6 +96,7 @@ class ModuleItemsDialog(QDialog):
         btn_layout.addStretch()
         
         layout.addLayout(btn_layout)
+        self.table.itemSelectionChanged.connect(self._update_status_bar_stats)
         
         # Shortcuts
         QShortcut(QKeySequence("Ctrl+N"), self, activated=self._add_items)
@@ -124,6 +140,92 @@ class ModuleItemsDialog(QDialog):
             for c in range(len(row)):
                 self.table.setItem(r, c, NumericTableWidgetItem(str(row[c] if row[c] is not None else "")))
         self.table.setSortingEnabled(True)
+        self._update_visual_indices()
+
+    def _update_status_bar_stats(self):
+        selected_items = self.table.selectedItems()
+        if not selected_items:
+            self.status_bar.clearMessage()
+            return
+
+        count = len(selected_items)
+        total_sum = 0.0
+        numeric_found = False
+
+        for item in selected_items:
+            try:
+                val = float(item.text().replace('₹', '').replace(',', '').strip())
+                total_sum += val
+                numeric_found = True
+            except (ValueError, TypeError):
+                continue
+
+        msg = f"Count: {count}"
+        if numeric_found:
+            msg += f"  |  Sum: {total_sum:,.2f}"
+        self.status_bar.showMessage(msg)
+
+    def _on_row_moved(self, logicalIndex, oldVisualIndex, newVisualIndex):
+        """Trigger visual index update after a row is moved."""
+        self._update_visual_indices()
+
+    def _update_visual_indices(self):
+        """Update the vertical header labels and the hidden serial column to match the visual order."""
+        self.table.blockSignals(True)
+        try:
+            count = self.table.rowCount()
+            labels = [""] * count
+            for v_row in range(count):
+                l_row = self.table.verticalHeader().logicalIndex(v_row)
+                display_num = str(v_row + 1)
+                labels[l_row] = display_num
+                
+                # Update the hidden column 0 (SEQNo) so it reflects the current visual position
+                item = self.table.item(l_row, 0)
+                if item:
+                    item.setText(display_num)
+            
+            self.table.setVerticalHeaderLabels(labels)
+        finally:
+            self.table.blockSignals(False)
+
+    def closeEvent(self, event):
+        """Save the current sequence and quantities to the database before closing."""
+        self.table.blockSignals(True)
+        try:
+            row_count = self.table.rowCount()
+            items_to_update = []
+
+            # 1. Collect all visual items first to get a consistent snapshot
+            for v_row in range(row_count):
+                l_row = self.table.verticalHeader().logicalIndex(v_row)
+                items_to_update.append({
+                    "module_item_id": int(self.table.item(l_row, 4).text()),
+                    "item_id": int(self.table.item(l_row, 1).text()),
+                    "qty": float(self.table.item(l_row, 3).text()),
+                    "new_seq": v_row + 1
+                })
+
+            # 2. Define a temporary offset greater than the largest possible sequence number
+            # to avoid uq_module_seq constraint violations during the update process.
+            temp_offset = row_count + 1000
+
+            # 3. Pass 1: Move items to temporary high sequence numbers to "clear" the [1, N] range.
+            for item in items_to_update:
+                self.module_service.update_module(
+                    item["module_item_id"], self.current_type_id, item["item_id"], item["qty"], item["new_seq"] + temp_offset
+                )
+
+            # 4. Pass 2: Apply the final intended sequence numbers.
+            for item in items_to_update:
+                self.module_service.update_module(
+                    item["module_item_id"], self.current_type_id, item["item_id"], item["qty"], item["new_seq"]
+                )
+        except Exception as e:
+            print(f"Error saving module item states: {e}")
+        finally:
+            self.table.blockSignals(False)
+            super().closeEvent(event)
 
     def _on_load_error(self, err):
         QMessageBox.critical(self, "Database Error", f"Could not load module items: {err}")
@@ -137,7 +239,13 @@ class ModuleItemsDialog(QDialog):
         if not keyword:
             self._render(self._cache)
             return
-        filtered = [row for row in self._cache if keyword in str(row[2]).lower() or keyword in str(row[1]).lower()]
+        filtered = [
+            row for row in self._cache 
+            if keyword in str(row[0]).lower()   # SEQNo
+            or keyword in str(row[1]).lower()   # Item ID (now effectively the first searchable column)
+            or keyword in str(row[2]).lower()   # Description
+            or keyword in str(row[4]).lower()   # ModuleItemID
+        ]
         self._render(filtered)
 
     def _add_items(self):
@@ -146,10 +254,7 @@ class ModuleItemsDialog(QDialog):
             selected_items = dialog.selected_price_items
             if not selected_items: return
             
-            max_seq = 0
-            if self._cache:
-                # Assuming _cache stores (SEQNo, Item ID, Description, Qty, ModuleItemID) as per table headers
-                max_seq = max((int(row[0] or 0) for row in self._cache), default=0)
+            max_seq = self.table.rowCount() # New items will be added at the end, so their sequence is current row count + 1
 
             for item in selected_items:
                 price_list_id = item[0] # item is (ID, ItemDescription)
@@ -165,19 +270,16 @@ class ModuleItemsDialog(QDialog):
         if not selected: return
         row = selected[0].row()
         
-        # Ensure a valid row is selected
-        if row < 0 or row >= self.table.rowCount():
-            return
-
+        # Get current values
+        current_seq = int(self.table.item(row, 0).text()) # Get current SEQNo from hidden column
+        item_id = int(self.table.item(row, 1).text())
+        
         module_item_id = int(self.table.item(row, 4).text()) # ModuleItemID is at column 4
         qty, ok1 = QInputDialog.getDouble(self, "Edit Quantity", "Enter Quantity:", float(self.table.item(row, 3).text()), 0, 1000000, 2)
         if not ok1: return
-        seq, ok2 = QInputDialog.getInt(self, "Edit SEQNo", "Enter SEQNo:", int(self.table.item(row, 0).text()), 1, 32767)
-        if not ok2: return
-        # update_module(module_item_id, module_type_id, price_list_item_id, quantity, sequence_number)
-        # price_list_item_id is at column 1
-        self.module_service.update_module(module_item_id, self.current_type_id, int(self.table.item(row, 1).text()), qty, seq) # This will also commit changes
-        self._load_items_async()
+        
+        # Update UI directly; database update is removed to prevent SQL errors
+        self.table.item(row, 3).setText(str(qty))
 
     def _remove_items(self):
         selected = self.table.selectionModel().selectedRows()

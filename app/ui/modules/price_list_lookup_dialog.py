@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
-    QLineEdit, QLabel, QAbstractItemView, QMessageBox, QDialogButtonBox
+    QLineEdit, QLabel, QAbstractItemView, QMessageBox, QDialogButtonBox, QComboBox, QStatusBar
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QShortcut, QKeySequence
@@ -26,6 +26,7 @@ class PriceListLookupDialog(QDialog):
 
         self.setup_ui()
         self._load_data_async()
+        self._populate_filter_lookups()
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -50,22 +51,29 @@ class PriceListLookupDialog(QDialog):
         self.model_filter.setPlaceholderText("Filter Model...")
         self.model_filter.textChanged.connect(self._debounce_search)
 
-        self.category_filter = QLineEdit()
-        self.category_filter.setPlaceholderText("Filter Category...")
-        self.category_filter.textChanged.connect(self._debounce_search)
+        self.category_filter = QComboBox()
+        self.category_filter.setEditable(True)
+        self.category_filter.setInsertPolicy(QComboBox.NoInsert)
+        self.category_filter.lineEdit().setPlaceholderText("Filter Category...")
+        self.category_filter.editTextChanged.connect(self._debounce_search)
 
-        self.make_filter = QLineEdit()
-        self.make_filter.setPlaceholderText("Filter Make...")
-        self.make_filter.textChanged.connect(self._debounce_search)
+        self.make_filter = QComboBox()
+        self.make_filter.setEditable(True)
+        self.make_filter.setInsertPolicy(QComboBox.NoInsert)
+        self.make_filter.lineEdit().setPlaceholderText("Filter Make...")
+        self.make_filter.editTextChanged.connect(self._debounce_search)
         
-        self.clear_filters_btn = QPushButton("🧹 Clear All Filters")
+        self.clear_filters_btn = QPushButton("🧹 Clear")
+        self.clear_filters_btn.setFixedWidth(80)
         self.clear_filters_btn.clicked.connect(self.clear_all_filters)
 
-        row2.addWidget(QLabel("Narrow by:"))
-        row2.addWidget(self.model_filter)
-        row2.addWidget(self.category_filter)
-        row2.addWidget(self.make_filter)
+        # Align filters with columns: ID(0), Desc(1), Model(2), Category(3), Make(4)
+        row2.addWidget(QLabel("Filters:"), 1)      # Align roughly with ID/Desc
+        row2.addWidget(self.model_filter, 2)       # Respected Column: Model
+        row2.addWidget(self.category_filter, 2)    # Respected Column: Category
+        row2.addWidget(self.make_filter, 2)        # Respected Column: Make
         row2.addWidget(self.clear_filters_btn)
+        row2.addStretch(1)
         search_layout.addLayout(row2)
 
         layout.addLayout(search_layout)
@@ -78,12 +86,18 @@ class PriceListLookupDialog(QDialog):
             "List Price", "Discount %", "Net Price", "Used Qty", "Total Amount",
             "CategoryID", "MakeID"
         ])
-        self.table.hideColumn(0) # Hide ID visually, but still retrieve it
+        # self.table.hideColumn(0) # Item ID column is now visible
         self.table.hideColumn(10) # Hide CategoryID
         self.table.hideColumn(11) # Hide MakeID
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection) # Enable multi-selection
         layout.addWidget(self.table)
+
+        # Footer Status Bar for selection statistics
+        self.status_bar = QStatusBar()
+        self.status_bar.setStyleSheet("QStatusBar { background-color: #f8fafc; color: #475569; border-top: 1px solid #e2e8f0; font-size: 11px; }")
+        layout.addWidget(self.status_bar)
+        self.table.itemSelectionChanged.connect(self._update_status_bar_stats)
 
         # Buttons
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -95,6 +109,47 @@ class PriceListLookupDialog(QDialog):
         # Shortcuts
         QShortcut(QKeySequence.Find, self, activated=lambda: self.search_box.setFocus())
         QShortcut(QKeySequence("Ctrl+R"), self, activated=self.refresh_table)
+
+    def _update_status_bar_stats(self):
+        selected_items = self.table.selectedItems()
+        if not selected_items:
+            self.status_bar.clearMessage()
+            return
+
+        count = len(selected_items)
+        total_sum = 0.0
+        numeric_found = False
+
+        for item in selected_items:
+            try:
+                val = float(item.text().replace('₹', '').replace(',', '').strip())
+                total_sum += val
+                numeric_found = True
+            except (ValueError, TypeError):
+                continue
+
+        msg = f"Count: {count}"
+        if numeric_found:
+            msg += f"  |  Sum: {total_sum:,.2f}"
+        self.status_bar.showMessage(msg)
+
+    def _populate_filter_lookups(self):
+        """Populate the filter dropdowns with unique categories and makes."""
+        self.category_filter.blockSignals(True)
+        self.make_filter.blockSignals(True)
+        
+        self.category_filter.clear()
+        self.category_filter.addItem("")
+        for row in self.service.get_all_categories():
+            self.category_filter.addItem(str(row[1] or ""))
+            
+        self.make_filter.clear()
+        self.make_filter.addItem("")
+        for row in self.service.get_all_makes():
+            self.make_filter.addItem(str(row[1] or ""))
+            
+        self.category_filter.blockSignals(False)
+        self.make_filter.blockSignals(False)
 
     def _load_data_async(self):
         if self._worker: return
@@ -126,10 +181,10 @@ class PriceListLookupDialog(QDialog):
         self._search_timer.start(300)
 
     def _perform_search(self):
-        keyword = self.search_box.text().lower()
-        model_key = self.model_filter.text().lower()
-        category_key = self.category_filter.text().lower()
-        make_key = self.make_filter.text().lower()
+        keyword = self.search_box.text().lower().strip()
+        model_key = self.model_filter.text().lower().strip()
+        category_key = self.category_filter.currentText().lower().strip()
+        make_key = self.make_filter.currentText().lower().strip()
 
         if not any([keyword, model_key, category_key, make_key]):
             self._render(self._cache)
@@ -141,6 +196,7 @@ class PriceListLookupDialog(QDialog):
             match_general = True
             if keyword:
                 search_content = " ".join([
+                    str(row[0] or ""), # Include ID in general search
                     str(row[1] or ""),
                     str(row[2] or ""),
                     str(row[3] or ""),
@@ -149,9 +205,9 @@ class PriceListLookupDialog(QDialog):
                 match_general = keyword in search_content
 
             # Check individual filters (AND logic)
-            match_model = not model_key or model_key in str(row[2]).lower()
-            match_category = not category_key or category_key in str(row[3]).lower()
-            match_make = not make_key or make_key in str(row[4]).lower()
+            match_model = not model_key or model_key in str(row[2] or "").lower()
+            match_category = not category_key or category_key in str(row[3] or "").lower()
+            match_make = not make_key or make_key in str(row[4] or "").lower()
 
             if match_general and match_model and match_category and match_make:
                 filtered.append(row)
@@ -161,8 +217,8 @@ class PriceListLookupDialog(QDialog):
         """Resets all search fields."""
         self.search_box.clear()
         self.model_filter.clear()
-        self.category_filter.clear()
-        self.make_filter.clear()
+        self.category_filter.setCurrentIndex(0)
+        self.make_filter.setCurrentIndex(0)
 
     def refresh_table(self):
         self.clear_all_filters()

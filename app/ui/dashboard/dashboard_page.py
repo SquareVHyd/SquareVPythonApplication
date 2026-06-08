@@ -1,3 +1,4 @@
+import os
 from PySide6.QtWidgets import (
     QWidget,
     QLabel,
@@ -7,6 +8,7 @@ from PySide6.QtWidgets import (
     QGridLayout
 )
 from PySide6.QtCore import Qt, QDate
+from PySide6.QtGui import QPixmap
 
 
 class DashboardPage(QWidget):
@@ -25,18 +27,50 @@ class DashboardPage(QWidget):
         header = QFrame()
         header.setObjectName("header")
 
-        header_layout = QVBoxLayout(header)
+        header_layout = QHBoxLayout(header)
+
+        # Logo
+        logo_label = QLabel()
+        logo_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "Images",
+            "SQV_Header.png"
+        )
+        if os.path.exists(logo_path):
+            logo_label.setPixmap(QPixmap(logo_path).scaledToHeight(80, Qt.SmoothTransformation))
+        logo_label.setAlignment(Qt.AlignCenter)
+
+        # Text Content Container
+        text_layout = QVBoxLayout()
 
         company_name = QLabel("SQUARE V ENGINEERING ENTERPRISES")
         company_name.setObjectName("companyName")
         company_name.setAlignment(Qt.AlignCenter)
 
-        tagline = QLabel("Race For Quality Has No Finish Line")
-        tagline.setObjectName("tagline")
-        tagline.setAlignment(Qt.AlignCenter)
+        website = QLabel('Website: <a href="https://squarevengineering.com/" style="color: #dbe9ff;">https://squarevengineering.com/</a>')
+        website.setObjectName("headerDetail")
+        website.setAlignment(Qt.AlignCenter)
+        website.setOpenExternalLinks(True)
 
-        header_layout.addWidget(company_name)
-        header_layout.addWidget(tagline)
+        
+        address = QLabel("Survey No:298/P, Road No 14, Pipe Line Road, Phase-I, IDA, Jeedimetla, Hyderabad - 500055, Telangana")
+        address.setObjectName("headerDetail")
+        address.setAlignment(Qt.AlignCenter)
+        address.setWordWrap(True)
+
+        gst_no = QLabel("GST Number: 36AFKFS1080B1Z7")
+        gst_no.setObjectName("headerDetail")
+        gst_no.setAlignment(Qt.AlignCenter)
+
+        text_layout.addWidget(company_name)
+        text_layout.addWidget(website)
+        text_layout.addWidget(address)
+        text_layout.addWidget(gst_no)
+
+        header_layout.addWidget(logo_label)
+        header_layout.addStretch() # Add stretch before text_layout to push it right
+        header_layout.addLayout(text_layout)
+        header_layout.addStretch() # Add stretch after text_layout to center it
 
         # ==================================================
         # WELCOME CARD
@@ -98,22 +132,6 @@ class DashboardPage(QWidget):
                 QDate.currentDate().toString("dd-MM-yyyy")
             ),
             1, 1
-        )
-
-        info_layout.addWidget(
-            self.create_info_card(
-                "Address",
-                "Survey No:298/P, Road No 14, Pipe Line Road, Phase-I, IDA, Jeedimetla, Hyderabad - 500055, Telangana"
-            ),
-            2, 0
-        )
-
-        info_layout.addWidget(
-            self.create_info_card(
-                "GST Number",
-                "36AFKFS1080B1Z7"
-            ),
-            2, 1
         )
 
         # ==================================================
@@ -180,16 +198,16 @@ class DashboardPage(QWidget):
 
         #companyName {
             background: transparent;
-            color: white;
+            color: #ff0000;
             font-size: 24px;
             font-weight: bold;
         }
 
-        #tagline {
+        
+        #headerDetail {
             background: transparent;
             color: #dbe9ff;
-            font-size: 13px;
-            font-weight: 500;
+            font-size: 11px;
         }
 
         #sectionTitle {

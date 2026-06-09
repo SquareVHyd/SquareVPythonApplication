@@ -74,6 +74,7 @@ class MasterDataPage(QWidget):
 
         # Data Table
         self.table = SearchableTable()
+        self.table.setStyleSheet("QTableView { selection-background-color: #93c5fd; selection-color: #000000; } QHeaderView::section { background-color: #fce4ec; border: 1px solid #e2e8f0; }")
         self.table.setAlternatingRowColors(True)
         layout.addWidget(self.table)
 
@@ -85,27 +86,13 @@ class MasterDataPage(QWidget):
         self.table.itemSelectionChanged.connect(self._update_status_bar_stats)
 
     def _update_status_bar_stats(self):
-        selected_items = self.table.selectedItems()
-        if not selected_items:
+        selected_rows = self.table.selectionModel().selectedRows()
+        if not selected_rows:
             self.status_bar.clearMessage()
             return
 
-        count = len(selected_items)
-        total_sum = 0.0
-        numeric_found = False
-
-        for item in selected_items:
-            try:
-                val = float(item.text().replace('₹', '').replace(',', '').strip())
-                total_sum += val
-                numeric_found = True
-            except (ValueError, TypeError):
-                continue
-
+        count = len(selected_rows)
         msg = f"Count: {count}"
-        if numeric_found:
-            msg += f"  |  Sum: {total_sum:,.2f}"
-        
         self.status_bar.showMessage(msg)
 
     def get_db_connection(self):

@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
-    QLineEdit, QLabel, QAbstractItemView, QMessageBox, QMenu, QInputDialog
+    QLineEdit, QLabel, QAbstractItemView, QMessageBox, QMenu, QInputDialog, QStatusBar
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QShortcut, QKeySequence
@@ -85,6 +85,7 @@ class ModuleViewPage(QWidget):
         layout.addLayout(filter_row)
 
         self.table = SearchableTable()
+        self.table.setStyleSheet("QTableView { selection-background-color: #93c5fd; selection-color: #000000; }")
         self.table.setColumnCount(4) # Changed from 5 to 4
         self.table.setHorizontalHeaderLabels([
             "ID",
@@ -107,11 +108,28 @@ class ModuleViewPage(QWidget):
         
         layout.addWidget(self.table)
 
+        # Footer Status Bar for selection statistics
+        self.status_bar = QStatusBar()
+        self.status_bar.setStyleSheet("QStatusBar { background-color: #f8fafc; color: #475569; border-top: 1px solid #e2e8f0; font-size: 11px; }")
+        layout.addWidget(self.status_bar)
+
+        self.table.itemSelectionChanged.connect(self._update_status_bar_stats)
+
         QShortcut(QKeySequence("Ctrl+R"), self, activated=self.refresh_table)
         QShortcut(QKeySequence("Ctrl+N"), self, activated=self._add_module_type)
         QShortcut(QKeySequence("Ctrl+E"), self, activated=self._edit_module_type)
         QShortcut(QKeySequence.Delete, self, activated=self._delete_module_type)
         QShortcut(QKeySequence.Find, self, activated=lambda: self.search_box.setFocus())
+
+    def _update_status_bar_stats(self):
+        selected_rows = self.table.selectionModel().selectedRows()
+        if not selected_rows:
+            self.status_bar.clearMessage()
+            return
+
+        count = len(selected_rows)
+        msg = f"Count: {count}"
+        self.status_bar.showMessage(msg)
 
     def _on_context_menu(self, pos):
         item = self.table.itemAt(pos)

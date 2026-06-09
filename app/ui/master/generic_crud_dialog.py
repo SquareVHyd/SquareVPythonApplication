@@ -32,9 +32,9 @@ class GenericCrudDialog(QDialog):
         self.layout.addWidget(scroll_area)
 
         buttons_layout = QHBoxLayout()
-        save_btn = QPushButton("Save")
+        save_btn = QPushButton("💾 Save")
         save_btn.clicked.connect(self.accept)
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = QPushButton("✖️ Cancel")
         cancel_btn.clicked.connect(self.reject)
         buttons_layout.addWidget(save_btn)
         buttons_layout.addWidget(cancel_btn)

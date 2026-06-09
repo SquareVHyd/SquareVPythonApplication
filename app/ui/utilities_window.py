@@ -4,9 +4,9 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtCore import Qt
-from app.ui.electricity_bill_page import ElectricityBillPage
-from app.ui.zed_scorecard_page import ZEDScoreCardPage
-from app.ui.timely_delivery_page import TimelyDeliveryPage
+from app.ui.Utilities.electricity_bill_page import ElectricityBillPage
+from app.ui.Utilities.zed_scorecard_page import ZEDScoreCardPage
+from app.ui.Utilities.timely_delivery_page import TimelyDeliveryPage
 
 class UtilitiesWindow(QMainWindow):
     """A dedicated window for utility management tools with a sidebar layout similar to MainWindow."""

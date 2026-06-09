@@ -80,6 +80,7 @@ class PriceListLookupDialog(QDialog):
 
         # Table
         self.table = SearchableTable()
+        self.table.setStyleSheet("QTableView { selection-background-color: #93c5fd; selection-color: #000000; }")
         self.table.setColumnCount(12) # Based on PriceListRepository.get_all_price_items query
         self.table.setHorizontalHeaderLabels([
             "ID", "Item Description", "Model", "Category", "Make",
@@ -111,26 +112,13 @@ class PriceListLookupDialog(QDialog):
         QShortcut(QKeySequence("Ctrl+R"), self, activated=self.refresh_table)
 
     def _update_status_bar_stats(self):
-        selected_items = self.table.selectedItems()
-        if not selected_items:
+        selected_rows = self.table.selectionModel().selectedRows()
+        if not selected_rows:
             self.status_bar.clearMessage()
             return
 
-        count = len(selected_items)
-        total_sum = 0.0
-        numeric_found = False
-
-        for item in selected_items:
-            try:
-                val = float(item.text().replace('₹', '').replace(',', '').strip())
-                total_sum += val
-                numeric_found = True
-            except (ValueError, TypeError):
-                continue
-
+        count = len(selected_rows)
         msg = f"Count: {count}"
-        if numeric_found:
-            msg += f"  |  Sum: {total_sum:,.2f}"
         self.status_bar.showMessage(msg)
 
     def _populate_filter_lookups(self):

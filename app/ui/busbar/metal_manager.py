@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton, 
-                             QLineEdit, QLabel, QMessageBox, QMenu, QAbstractItemView, QApplication)
+                             QLineEdit, QLabel, QMessageBox, QMenu, QAbstractItemView, QApplication, QStatusBar)
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QShortcut, QKeySequence, QDoubleValidator, QAction
 from app.services.busbar_service import BusbarService
@@ -29,7 +29,7 @@ class MetalForm(QDialog):
         layout.addWidget(self.cost_input)
         
         btns = QHBoxLayout()
-        save = QPushButton("Save")
+        save = QPushButton("💾 Save")
         save.clicked.connect(self.accept)
         btns.addWidget(save)
         layout.addLayout(btns)
@@ -90,6 +90,7 @@ class MetalManagerDialog(QDialog):
         self.layout.addLayout(header)
 
         self.table = SearchableTable()
+        self.table.setStyleSheet("QTableView { selection-background-color: #93c5fd; selection-color: #000000; } QHeaderView::section { background-color: #fce4ec; border: 1px solid #e2e8f0; }")
         self.table.setColumnCount(5)
         self.table.setHorizontalHeaderLabels(["ID", "Metal", "Density", "Curr Density", "Unit Cost"])
         self.table.hideColumn(0)
@@ -97,12 +98,29 @@ class MetalManagerDialog(QDialog):
         self.table.setSortingEnabled(True)
         self.layout.addWidget(self.table)
 
+        # Footer Status Bar for selection statistics
+        self.status_bar = QStatusBar()
+        self.status_bar.setStyleSheet("QStatusBar { background-color: #f8fafc; color: #475569; border-top: 1px solid #e2e8f0; font-size: 11px; }")
+        self.layout.addWidget(self.status_bar)
+
+        self.table.itemSelectionChanged.connect(self._update_status_bar_stats)
+
         # Shortcuts
         QShortcut(QKeySequence("Ctrl+N"), self).activated.connect(self.add_item)
         QShortcut(QKeySequence("Ctrl+E"), self).activated.connect(self.edit_item)
         QShortcut(QKeySequence("Ctrl+R"), self).activated.connect(self.load_data)
         QShortcut(QKeySequence("Ctrl+F"), self).activated.connect(self.search_box.setFocus)
         QShortcut(QKeySequence(Qt.Key_Delete), self).activated.connect(self.delete_item)
+
+    def _update_status_bar_stats(self):
+        selected_rows = self.table.selectionModel().selectedRows()
+        if not selected_rows:
+            self.status_bar.clearMessage()
+            return
+
+        count = len(selected_rows)
+        msg = f"Count: {count}"
+        self.status_bar.showMessage(msg)
 
     def load_data(self):
         QApplication.setOverrideCursor(Qt.WaitCursor)

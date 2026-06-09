@@ -136,11 +136,26 @@ class LoginWindow(QWidget):
         info_layout.setContentsMargins(30, 40, 30, 25)
         info_layout.setSpacing(8)
 
-        # Company Details
+        # Company Details (Logo + Title)
+        logo_container = QHBoxLayout()
+        logo_container.setAlignment(Qt.AlignCenter)
+        logo_container.setSpacing(15)
+
+        self.img_logo_lbl = QLabel()
+        logo_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "Images",
+            "SQV_Header.png"
+        )
+        if os.path.exists(logo_path):
+            self.img_logo_lbl.setPixmap(QPixmap(logo_path).scaledToHeight(60, Qt.SmoothTransformation))
+
         self.logo_lbl = QLabel("SQUARE V ENGINEERING")
-        self.logo_lbl.setAlignment(Qt.AlignCenter)
-        self.logo_lbl.setStyleSheet("font-weight: 800; color: #ff0000; border: none;font-size: 30px;")
-        info_layout.addWidget(self.logo_lbl)
+        self.logo_lbl.setStyleSheet("font-weight: 800; color: #ff0000; border: none; font-size: 30px;")
+
+        logo_container.addWidget(self.img_logo_lbl)
+        logo_container.addWidget(self.logo_lbl)
+        info_layout.addLayout(logo_container)
 
         address_text = (
             "Survey No:298/P, Road No 14, Pipe Line Road, "

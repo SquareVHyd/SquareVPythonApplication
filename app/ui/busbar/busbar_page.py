@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                              QLineEdit, QLabel, QMessageBox, QMenu, QAbstractItemView, 
-                             QFrame, QApplication, QDialog, QSplitter, QGroupBox, QGridLayout, QFileDialog)
+                             QFrame, QApplication, QDialog, QSplitter, QGroupBox, QGridLayout, QFileDialog, QStatusBar)
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QShortcut, QKeySequence
 from app.services.busbar_service import BusbarService
@@ -37,7 +37,7 @@ class BusbarPage(QWidget):
 
         # Toolbar
         header_layout = QHBoxLayout()
-        title = QLabel("Busbar Materials")
+        title = QLabel("Busbar Materials Entry")
         title.setStyleSheet("font-size: 18px; font-weight: bold;")
         
         self.search_box = QLineEdit()
@@ -63,6 +63,32 @@ class BusbarPage(QWidget):
         header_layout.addWidget(self.delete_btn)
         self.left_layout.addLayout(header_layout)
 
+        # Filter Row
+        filter_row = QHBoxLayout()
+        self.run_filter = QLineEdit()
+        self.run_filter.setPlaceholderText("Filter Run...")
+        self.run_filter.textChanged.connect(self._debounce_search)
+
+        self.width_filter = QLineEdit()
+        self.width_filter.setPlaceholderText("Filter Width...")
+        self.width_filter.textChanged.connect(self._debounce_search)
+
+        self.thick_filter = QLineEdit()
+        self.thick_filter.setPlaceholderText("Filter Thick...")
+        self.thick_filter.textChanged.connect(self._debounce_search)
+
+        self.clear_filters_btn = QPushButton("🧹 Clear")
+        self.clear_filters_btn.setFixedWidth(80)
+        self.clear_filters_btn.clicked.connect(self.clear_all_filters)
+
+        filter_row.addWidget(QLabel("Column Filters: "))
+        filter_row.addWidget(self.run_filter)
+        filter_row.addWidget(self.width_filter)
+        filter_row.addWidget(self.thick_filter)
+        filter_row.addWidget(self.clear_filters_btn)
+        filter_row.addStretch()
+        self.left_layout.addLayout(filter_row)
+
         # Table
         self.table = SearchableTable()
         self.table.setColumnCount(12)
@@ -76,6 +102,7 @@ class BusbarPage(QWidget):
         self.table.hideColumn(11)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         
+        self.table.setStyleSheet("QTableView { selection-background-color: #93c5fd; selection-color: #000000; } QHeaderView::section { background-color: #fce4ec; border: 1px solid #e2e8f0; }")
         # Enable movable columns and rows
         self.table.horizontalHeader().setSectionsMovable(True)
         self.table.verticalHeader().setSectionsMovable(True)
@@ -98,12 +125,30 @@ class BusbarPage(QWidget):
         
         self.main_layout.addWidget(self.splitter)
 
+        # Footer Status Bar for selection statistics
+        self.status_bar = QStatusBar()
+        self.status_bar.setSizeGripEnabled(False)
+        self.status_bar.setStyleSheet("QStatusBar { background-color: #f8fafc; color: #475569; border-top: 1px solid #e2e8f0; max-height: 25px; }")
+        self.main_layout.addWidget(self.status_bar)
+
+        self.table.itemSelectionChanged.connect(self._update_status_bar_stats)
+
         # Shortcuts
         QShortcut(QKeySequence("Ctrl+N"), self).activated.connect(self.add_busbar)
         QShortcut(QKeySequence("Ctrl+E"), self).activated.connect(self.edit_busbar)
         QShortcut(QKeySequence("Ctrl+R"), self).activated.connect(self.refresh_table)
         QShortcut(QKeySequence("Ctrl+F"), self).activated.connect(self.search_box.setFocus)
         QShortcut(QKeySequence(Qt.Key_Delete), self).activated.connect(self.delete_busbar)
+
+    def _update_status_bar_stats(self):
+        selected_rows = self.table.selectionModel().selectedRows()
+        if not selected_rows:
+            self.status_bar.clearMessage()
+            return
+
+        count = len(selected_rows)
+        msg = f"Count: {count}"
+        self.status_bar.showMessage(msg)
 
     def setup_summary_view(self):
         # Header with Title and Close button
@@ -146,15 +191,16 @@ class BusbarPage(QWidget):
 
         # Action Buttons
         btn_layout = QHBoxLayout()
-        apply_btn = QPushButton("Apply Filter"); apply_btn.clicked.connect(self.apply_summary_filters)
-        clear_btn = QPushButton("Clear Filter"); clear_btn.clicked.connect(self.clear_summary_filters)
-        refresh_v_btn = QPushButton("Refresh View"); refresh_v_btn.clicked.connect(self.apply_summary_filters)
-        export_btn = QPushButton("Export Excel"); export_btn.clicked.connect(self.export_summary_excel)
+        apply_btn = QPushButton("🔍 Apply Filter"); apply_btn.clicked.connect(self.apply_summary_filters); apply_btn.setStyleSheet("background-color: #D2B48C;")
+        clear_btn = QPushButton("🧹 Clear Filter"); clear_btn.clicked.connect(self.clear_summary_filters); clear_btn.setStyleSheet("background-color: #D2B48C;")
+        refresh_v_btn = QPushButton("🔄 Refresh View"); refresh_v_btn.clicked.connect(self.apply_summary_filters); refresh_v_btn.setStyleSheet("background-color: #D2B48C;")
+        export_btn = QPushButton("📊 Export Excel"); export_btn.clicked.connect(self.export_summary_excel); export_btn.setStyleSheet("background-color: #D2B48C;")
         
         btn_layout.addWidget(apply_btn); btn_layout.addWidget(clear_btn); btn_layout.addWidget(refresh_v_btn); btn_layout.addWidget(export_btn)
         self.right_layout.addLayout(btn_layout)
 
         self.summary_table = SearchableTable()
+        self.summary_table.setStyleSheet("QTableView { selection-background-color: #93c5fd; selection-color: #000000; } QHeaderView::section { background-color: #fce4ec; border: 1px solid #e2e8f0; }")
         self.summary_table.setColumnCount(13)
         self.summary_table.setHorizontalHeaderLabels([
             "Size", "CalAmps", "Metal Kg/m", "Rs/Meter", "Run", "BBSize", 
@@ -199,12 +245,20 @@ class BusbarPage(QWidget):
             QMessageBox.information(self, "Export", "Summary report exported successfully.")
 
     def refresh_table(self):
+        self.clear_all_filters()
         if self._worker and self._worker.isRunning():
             return
         QApplication.setOverrideCursor(Qt.WaitCursor)
         self._worker = Worker(self.service.get_all_busbars)
         self._worker.result.connect(self._on_data_loaded)
         self._worker.start()
+
+    def clear_all_filters(self):
+        """Resets all search fields which triggers re-render via textChanged signals."""
+        self.search_box.clear()
+        self.run_filter.clear()
+        self.width_filter.clear()
+        self.thick_filter.clear()
 
     def _on_data_loaded(self, data):
         self._cache = list(data)
@@ -246,8 +300,32 @@ class BusbarPage(QWidget):
         self._search_timer.start(300)
 
     def _perform_search(self):
-        kw = self.search_box.text().lower()
-        filtered = [r for r in self._cache if kw in " ".join(map(str, r)).lower()]
+        general_kw = self.search_box.text().lower()
+        run_kw = self.run_filter.text().lower()
+        width_kw = self.width_filter.text().lower()
+        thick_kw = self.thick_filter.text().lower()
+
+        if not any([general_kw, run_kw, width_kw, thick_kw]):
+            self._render(self._cache)
+            return
+
+        filtered = []
+        for row in self._cache:
+            # General keyword match across visible data columns (0-9)
+            match_general = True
+            if general_kw:
+                search_content = " ".join(map(str, row[:10])).lower()
+                match_general = general_kw in search_content
+            
+            # Specific field matches (AND logic)
+            # row indices: 1=Run, 2=Width, 3=Thick
+            match_run = not run_kw or run_kw in str(row[1] or "").lower()
+            match_width = not width_kw or width_kw in str(row[2] or "").lower()
+            match_thick = not thick_kw or thick_kw in str(row[3] or "").lower()
+
+            if match_general and match_run and match_width and match_thick:
+                filtered.append(row)
+
         self._render(filtered)
 
     def open_context_menu(self, pos):

@@ -56,7 +56,7 @@ class CostDetailsDialog(QDialog):
         info.setStyleSheet("color: gray;")
         layout.addWidget(info)
         
-        close_btn = QPushButton("Close")
+        close_btn = QPushButton("✖️ Close")
         close_btn.clicked.connect(self.accept)
         layout.addWidget(close_btn)
 

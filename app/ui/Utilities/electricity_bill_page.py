@@ -82,27 +82,27 @@ class ElectricityBillPage(QWidget):
         # Tab 1: Entry
         self.tab_entry = QWidget()
         self.setup_entry_tab()
-        self.tabs.addTab(self.tab_entry, "1. New/Edit Entry")
+        self.tabs.addTab(self.tab_entry, "📝 1. New/Edit Entry")
         
         # Tab 2: History
         self.tab_history = QWidget()
         self.setup_history_tab()
-        self.tabs.addTab(self.tab_history, "2. Bill History")
+        self.tabs.addTab(self.tab_history, "📜 2. Bill History")
         
         # Tab 3: Financial Trends
         self.tab_trends = QWidget()
         self.setup_trends_tab()
-        self.tabs.addTab(self.tab_trends, "3. Financial Trends")
+        self.tabs.addTab(self.tab_trends, "📊 3. Financial Trends")
 
         # Tab 4: PF Trend
         self.tab_pf = QWidget()
         self.setup_pf_tab()
-        self.tabs.addTab(self.tab_pf, "4. PF Trend")
+        self.tabs.addTab(self.tab_pf, "📉 4. PF Trend")
 
         # Tab 5: Report
         self.tab_report = QWidget()
         self.setup_report_tab()
-        self.tabs.addTab(self.tab_report, "5. Monthly Report")
+        self.tabs.addTab(self.tab_report, "📋 5. Monthly Report")
 
         self.main_layout.addWidget(self.tabs)
 

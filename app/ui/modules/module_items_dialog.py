@@ -55,6 +55,7 @@ class ModuleItemsDialog(QDialog):
         
         # Table
         self.table = SearchableTable()
+        self.table.setStyleSheet("QTableView { selection-background-color: #93c5fd; selection-color: #000000; } QHeaderView::section { background-color: #fce4ec; border: 1px solid #e2e8f0; }")
         self.table.setColumnCount(5) # These labels should match the query in ModuleService.get_items_by_module_type
         self.table.setHorizontalHeaderLabels([ # These labels should match the query in ModuleService.get_items_by_module_type
             "SEQNo", "Item ID", "Description", "Qty", "ModuleItemID"
@@ -143,26 +144,13 @@ class ModuleItemsDialog(QDialog):
         self._update_visual_indices()
 
     def _update_status_bar_stats(self):
-        selected_items = self.table.selectedItems()
-        if not selected_items:
+        selected_rows = self.table.selectionModel().selectedRows()
+        if not selected_rows:
             self.status_bar.clearMessage()
             return
 
-        count = len(selected_items)
-        total_sum = 0.0
-        numeric_found = False
-
-        for item in selected_items:
-            try:
-                val = float(item.text().replace('₹', '').replace(',', '').strip())
-                total_sum += val
-                numeric_found = True
-            except (ValueError, TypeError):
-                continue
-
+        count = len(selected_rows)
         msg = f"Count: {count}"
-        if numeric_found:
-            msg += f"  |  Sum: {total_sum:,.2f}"
         self.status_bar.showMessage(msg)
 
     def _on_row_moved(self, logicalIndex, oldVisualIndex, newVisualIndex):

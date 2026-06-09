@@ -4,10 +4,10 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtCore import Qt
-from app.ui.capacitor_page import CapacitorPage
-from app.ui.file_creator_page import FileCreatorPage
-from app.ui.file_viewer_page import FileViewerPage
-from app.ui.whatsapp_sender_page import WhatsAppSenderPage
+from app.ui.Tools.capacitor_page import CapacitorPage
+from app.ui.Tools.file_creator_page import FileCreatorPage
+from app.ui.Tools.file_viewer_page import FileViewerPage
+from app.ui.Tools.whatsapp_sender_page import WhatsAppSenderPage
 
 class ToolsWindow(QMainWindow):
     """A dedicated window for tools with a sidebar layout consistent with UtilitiesWindow."""

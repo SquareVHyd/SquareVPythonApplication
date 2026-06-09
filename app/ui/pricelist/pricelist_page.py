@@ -144,6 +144,7 @@ class PriceListPage(QWidget):
         layout.addLayout(filter_row)
 
         self.table = SearchableTable()
+        self.table.setStyleSheet("QTableView { selection-background-color: #93c5fd; selection-color: #000000; } QHeaderView::section { background-color: #fce4ec; border: 1px solid #e2e8f0; }")
 
         self.table.setColumnCount(12)
 
@@ -190,32 +191,54 @@ class PriceListPage(QWidget):
         self.status_bar.setStyleSheet("QStatusBar { background-color: #f8fafc; color: #475569; border-top: 1px solid #e2e8f0; font-size: 11px; }")
         layout.addWidget(self.status_bar)
 
+        # Initialize permanent summary labels for segmented display
+        self.lbl_sel_count = QLabel("Rows: 0")
+        self.lbl_sum_lp = QLabel("Sum(List Price): 0.00")
+        self.lbl_sum_np = QLabel("Sum(Net Price): 0.00")
+        self.lbl_sum_qty = QLabel("Sum(Used Qty): 0.00")
+        self.lbl_sum_total = QLabel("Sum(Total Amount): 0.00")
+
+        # Add labels to status bar with consistent spacing and dividers
+        for lbl in [self.lbl_sel_count, self.lbl_sum_lp, self.lbl_sum_np, self.lbl_sum_qty, self.lbl_sum_total]:
+            lbl.setStyleSheet("padding: 0 12px; border-left: 1px solid #e2e8f0; font-weight: 500;")
+            self.status_bar.addPermanentWidget(lbl)
+
         self.table.itemSelectionChanged.connect(self._update_status_bar_stats)
 
     def _update_status_bar_stats(self):
-        selected_items = self.table.selectedItems()
-        if not selected_items:
-            self.status_bar.clearMessage()
+        selected_rows = self.table.selectionModel().selectedRows()
+        if not selected_rows:
+            self.lbl_sel_count.setText("Rows: 0")
+            self.lbl_sum_lp.setText("Sum(List Price): 0.00")
+            self.lbl_sum_np.setText("Sum(Net Price): 0.00")
+            self.lbl_sum_qty.setText("Sum(Used Qty): 0.00")
+            self.lbl_sum_total.setText("Sum(Total Amount): 0.00")
             return
 
-        count = len(selected_items)
-        total_sum = 0.0
-        numeric_found = False
+        count = len(selected_rows)
+        vals = {"lp": 0.0, "np": 0.0, "qty": 0.0, "total": 0.0}
 
-        for item in selected_items:
-            try:
-                # Clean string for float conversion
-                val = float(item.text().replace('₹', '').replace(',', '').strip())
-                total_sum += val
-                numeric_found = True
-            except (ValueError, TypeError):
-                continue
+        for index in selected_rows:
+            r = index.row()
+            def get_val(c):
+                item = self.table.item(r, c)
+                if not item: return 0.0
+                try:
+                    return float(item.text().replace('₹', '').replace(',', '').strip())
+                except (ValueError, TypeError):
+                    return 0.0
+            
+            vals["lp"] += get_val(5)   # List Price
+            vals["np"] += get_val(7)   # Net Price
+            vals["qty"] += get_val(8)  # Used Qty
+            vals["total"] += get_val(9) # Total Amount
 
-        msg = f"Count: {count}"
-        if numeric_found:
-            msg += f"  |  Sum: {total_sum:,.2f}"
-        
-        self.status_bar.showMessage(msg)
+        # Update specific labels
+        self.lbl_sel_count.setText(f"Rows: {count}")
+        self.lbl_sum_lp.setText(f"Sum(List Price): {vals['lp']:,.2f}")
+        self.lbl_sum_np.setText(f"Sum(Net Price): {vals['np']:,.2f}")
+        self.lbl_sum_qty.setText(f"Sum(Used Qty): {vals['qty']:,.2f}")
+        self.lbl_sum_total.setText(f"Sum(Total Amount): {vals['total']:,.2f}")
 
         QShortcut(
             QKeySequence("Ctrl+N"),

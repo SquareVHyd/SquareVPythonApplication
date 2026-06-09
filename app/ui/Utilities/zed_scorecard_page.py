@@ -739,6 +739,7 @@ class ParameterWorkspaceWidget(QWidget):
         # Data Grid
         self.table = QTableWidget()
         self.table.setColumnCount(6)
+        self.table.setStyleSheet("QHeaderView::section { background-color: #fce4ec; border: 1px solid #e2e8f0; }")
         self.table.setHorizontalHeaderLabels(["ID", "KPI", "Zone/Area", "Month", "Value", "Remarks"])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)

@@ -133,7 +133,8 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(
             "#sidebar { background-color: #f0f2f5; } "
             "#appTitle { font-size: 20px; font-weight: bold; margin-bottom: 16px; } "
-            "#quitButton { color: #d32f2f; font-weight: bold; }"
+            "#quitButton { color: #d32f2f; font-weight: bold; } "
+            "QHeaderView::section { background-color: #fce4ec; border: 1px solid #e2e8f0; padding: 4px; font-weight: bold; }"
         )
         
         # Always open the dashboard page on login/startup

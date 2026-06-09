@@ -114,6 +114,7 @@ class StatePage(QWidget):
         self.layout.addLayout(header_layout)
 
         self.table = SearchableTable()
+        self.table.setStyleSheet("QTableView { selection-background-color: #93c5fd; selection-color: #000000; }")
         self.table.setColumnCount(3)
         self.table.setHorizontalHeaderLabels(["ID", "State Code", "State Name"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)

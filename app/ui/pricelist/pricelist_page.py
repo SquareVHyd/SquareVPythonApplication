@@ -205,6 +205,13 @@ class PriceListPage(QWidget):
 
         self.table.itemSelectionChanged.connect(self._update_status_bar_stats)
 
+        # Initialize Keyboard Shortcuts
+        QShortcut(QKeySequence("Ctrl+N"), self, activated=self.add_item)
+        QShortcut(QKeySequence("Ctrl+E"), self, activated=self.edit_item)
+        QShortcut(QKeySequence("Delete"), self, activated=self.delete_item)
+        QShortcut(QKeySequence("Ctrl+R"), self, activated=self.refresh_table)
+        QShortcut(QKeySequence.Find, self, activated=self.focus_search)
+
     def _update_status_bar_stats(self):
         selected_rows = self.table.selectionModel().selectedRows()
         if not selected_rows:
@@ -239,36 +246,6 @@ class PriceListPage(QWidget):
         self.lbl_sum_np.setText(f"Sum(Net Price): {vals['np']:,.2f}")
         self.lbl_sum_qty.setText(f"Sum(Used Qty): {vals['qty']:,.2f}")
         self.lbl_sum_total.setText(f"Sum(Total Amount): {vals['total']:,.2f}")
-
-        QShortcut(
-            QKeySequence("Ctrl+N"),
-            self,
-            activated=self.add_item
-        )
-
-        QShortcut(
-            QKeySequence("Ctrl+E"),
-            self,
-            activated=self.edit_item
-        )
-
-        QShortcut(
-            QKeySequence("Delete"),
-            self,
-            activated=self.delete_item
-        )
-
-        QShortcut(
-            QKeySequence("Ctrl+R"),
-            self,
-            activated=self.refresh_table
-        )
-
-        QShortcut(
-            QKeySequence.Find,
-            self,
-            activated=self.focus_search
-        )
 
     def focus_search(self):
         self.search_box.setFocus()

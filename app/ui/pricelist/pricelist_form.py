@@ -25,6 +25,9 @@ class PriceListForm(QDialog):
 
         self.setWindowTitle("Price List Item")
         self.setMinimumWidth(650)
+        
+        # Set window flags to allow treating the popup as a standard navigatable window
+        self.setWindowFlags(self.windowFlags() | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint)
 
         self.service = PriceListService()
 
@@ -42,6 +45,15 @@ class PriceListForm(QDialog):
         self.used_qty.textChanged.connect(self._calculate_total)
         self.total_amount = QLineEdit()
         self.total_amount.setReadOnly(True)
+
+        # Setup Add buttons to be placed beside values
+        self.new_category_btn = QPushButton("+")
+        self.new_category_btn.setFixedWidth(40)
+        self.new_category_btn.clicked.connect(self.add_new_category)
+
+        self.new_make_btn = QPushButton("+")
+        self.new_make_btn.setFixedWidth(40)
+        self.new_make_btn.clicked.connect(self.add_new_make)
 
         self.category_combo = QComboBox()
         self.category_combo.setEditable(True)
@@ -92,10 +104,16 @@ class PriceListForm(QDialog):
         layout.addWidget(self.model)
 
         layout.addWidget(QLabel("Category"))
-        layout.addWidget(self.category_combo)
+        cat_row = QHBoxLayout()
+        cat_row.addWidget(self.category_combo)
+        cat_row.addWidget(self.new_category_btn)
+        layout.addLayout(cat_row)
 
         layout.addWidget(QLabel("Make"))
-        layout.addWidget(self.make_combo)
+        make_row = QHBoxLayout()
+        make_row.addWidget(self.make_combo)
+        make_row.addWidget(self.new_make_btn)
+        layout.addLayout(make_row)
 
         layout.addWidget(QLabel("List Price"))
         layout.addWidget(self.list_price)
@@ -112,22 +130,6 @@ class PriceListForm(QDialog):
         layout.addWidget(QLabel("Total Amount"))
         layout.addWidget(self.total_amount)
 
-        self.new_category_btn = QPushButton("Add Category")
-        self.new_category_btn.clicked.connect(
-            self.add_new_category
-        )
-
-        self.new_make_btn = QPushButton("Add Make")
-        self.new_make_btn.clicked.connect(
-            self.add_new_make
-        )
-
-        lookup_layout = QHBoxLayout()
-        lookup_layout.addWidget(self.new_category_btn)
-        lookup_layout.addWidget(self.new_make_btn)
-
-        layout.addLayout(lookup_layout)
-
         buttons = QPushButton("Save")
         buttons.clicked.connect(self._on_save)
 
@@ -139,6 +141,18 @@ class PriceListForm(QDialog):
         btn_layout.addWidget(cancel_btn)
 
         layout.addLayout(btn_layout)
+
+        # Define input sequence for Enter key navigation
+        self.inputs = [
+            self.description, 
+            self.model, 
+            self.category_combo,
+            self.make_combo, 
+            self.list_price, 
+            self.discount,
+            self.net_price, 
+            self.used_qty
+        ]
 
         self._populate_lookups()
 
@@ -181,6 +195,26 @@ class PriceListForm(QDialog):
                 self.make_combo,
                 price_item[11]
             )
+            
+        self.description.setFocus()
+
+    def keyPressEvent(self, event):
+        """Handles Enter key to navigate between fields and save at the end."""
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+            curr = self.focusWidget()
+            # Handle combo boxes where focus is actually on the child line edit
+            target = curr
+            if curr and isinstance(curr.parent(), QComboBox):
+                target = curr.parent()
+            
+            if target in self.inputs:
+                idx = self.inputs.index(target)
+                if idx < len(self.inputs) - 1:
+                    self.inputs[idx + 1].setFocus()
+                else:
+                    self._on_save()
+                return
+        super().keyPressEvent(event)
 
     def _calculate_prices(self):
         try:
@@ -242,20 +276,29 @@ class PriceListForm(QDialog):
         )
 
         if ok and text.strip():
+            try:
+                self.service.create_category(
+                    text.strip()
+                )
 
-            self.service.create_category(
-                text.strip()
-            )
+                self._populate_lookups()
 
-            self._populate_lookups()
-
-            self._select_combo_label(
-                self.category_combo,
-                text.strip()
-            )
+                self._select_combo_label(
+                    self.category_combo,
+                    text.strip()
+                )
+            except Exception as e:
+                # Check for UniqueViolation specifically
+                if "UniqueViolation" in str(e) and "tblCategory_Category_unique" in str(e):
+                    QMessageBox.warning(
+                        self,
+                        "Duplicate Category",
+                        f"The category '{text.strip()}' already exists. Please enter a unique category name."
+                    )
+                else:
+                    QMessageBox.critical(self, "Database Error", f"Failed to add new category: {e}")
 
     def add_new_make(self):
-
         text, ok = QInputDialog.getText(
             self,
             "New Make",
@@ -263,20 +306,29 @@ class PriceListForm(QDialog):
         )
 
         if ok and text.strip():
+            try:
+                self.service.create_make(
+                    text.strip()
+                )
 
-            self.service.create_make(
-                text.strip()
-            )
+                self._populate_lookups()
 
-            self._populate_lookups()
-
-            self._select_combo_label(
-                self.make_combo,
-                text.strip()
-            )
+                self._select_combo_label(
+                    self.make_combo,
+                    text.strip()
+                )
+            except Exception as e:
+                # Check for UniqueViolation specifically for tblMake
+                if "UniqueViolation" in str(e) and ("tblMake_MakeName_key" in str(e) or "tblMake_Make_unique" in str(e)):
+                    QMessageBox.warning(
+                        self,
+                        "Duplicate Make",
+                        f"The make '{text.strip()}' already exists. Please enter a unique make name."
+                    )
+                else:
+                    QMessageBox.critical(self, "Database Error", f"Failed to add new make: {e}")
 
     def _select_combo_value(self, combo, value):
-
         if value is None:
             combo.setCurrentIndex(0)
             return
@@ -302,12 +354,20 @@ class PriceListForm(QDialog):
 
             desc = self.description.text().strip()
             model = self.model.text().strip()
+            cat = self.category_combo.currentText().strip()
+            make = self.make_combo.currentText().strip()
             
             if not desc:
                 raise ValueError("Item Description is required")
 
             if not model:
                 raise ValueError("Model is required")
+            
+            if not cat:
+                raise ValueError("Category is required")
+                
+            if not make:
+                raise ValueError("Make is required")
 
             # Database Pre-validation: Ensure numeric strings are actually numbers
             # to avoid database transaction crashes.

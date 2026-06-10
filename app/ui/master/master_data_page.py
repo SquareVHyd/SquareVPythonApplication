@@ -410,3 +410,29 @@ class MasterDataPage(QWidget):
                 QMessageBox.critical(self, "Database Error", f"Failed to delete record(s): {e}")
             finally:
                 conn.close()
+
+    def load_table_and_filter(self, table_name: str, column_name: str, filter_value: str):
+        """
+        Loads a specific table and applies a filter to a given column.
+        This method is intended to be called externally, e.g., from MainWindow.
+        """
+        # 1. Select the table in the QComboBox
+        index = self.table_selector.findText(table_name)
+        if index != -1:
+            self.table_selector.setCurrentIndex(index)
+            # Calling setCurrentIndex will trigger load_table_data, which also creates filters.
+            # We need to ensure filters are ready before setting text.
+            QApplication.processEvents() # Process events to ensure UI updates
+
+            # 2. Apply the filter to the specific column's QLineEdit
+            if column_name in self.filter_line_edits:
+                # Clear all other filters first to ensure only the desired filter is active
+                for le in self.filter_line_edits.values():
+                    le.clear()
+                self.general_search_box.clear()
+
+                self.filter_line_edits[column_name].setText(filter_value)
+            else:
+                QMessageBox.warning(self, "Filter Error", f"Column '{column_name}' not found for filtering in table '{table_name}'.")
+        else:
+            QMessageBox.warning(self, "Table Not Found", f"Table '{table_name}' not found in master data.")

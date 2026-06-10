@@ -14,6 +14,7 @@ from PySide6.QtCore import Qt
 
 from app.ui.pricelist.pricelist_page import PriceListPage
 from app.ui.customers.customer_page import CustomerPage
+from app.ui.quotations.quotation_page import QuotationPage
 from app.ui.modules.module_view_page import ModuleViewPage
 from app.ui.busbar.busbar_page import BusbarPage
 from app.ui.master.master_data_page import MasterDataPage
@@ -64,6 +65,7 @@ class MainWindow(QMainWindow):
 
         self.dashboard_btn = QPushButton("📊 Dashboard")
         self.customers_btn = QPushButton("👥 Customers")
+        self.quotations_btn = QPushButton("📄 Quotations")
         self.pricelist_btn = QPushButton("🧾 Price List")
         self.modules_btn = QPushButton("📚 Modules")
         self.busbar_btn = QPushButton("⚡ Busbar Materials")
@@ -73,6 +75,7 @@ class MainWindow(QMainWindow):
 
         self.dashboard_btn.setToolTip(self.shortcuts_tip)
         self.customers_btn.setToolTip(self.shortcuts_tip)
+        self.quotations_btn.setToolTip(self.shortcuts_tip)
         self.pricelist_btn.setToolTip(self.shortcuts_tip)
         self.modules_btn.setToolTip(self.shortcuts_tip)
         self.busbar_btn.setToolTip(self.shortcuts_tip)
@@ -80,6 +83,7 @@ class MainWindow(QMainWindow):
 
         self.dashboard_btn.clicked.connect(self.show_dashboard)
         self.customers_btn.clicked.connect(self.show_customers)
+        self.quotations_btn.clicked.connect(self.show_quotations)
         self.pricelist_btn.clicked.connect(self.show_pricelist)
         self.modules_btn.clicked.connect(self.show_modules)
         self.busbar_btn.clicked.connect(self.show_busbar)
@@ -99,6 +103,7 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(title)
         sidebar_layout.addWidget(self.dashboard_btn)
         sidebar_layout.addWidget(self.customers_btn)
+        sidebar_layout.addWidget(self.quotations_btn)
         sidebar_layout.addWidget(self.pricelist_btn)
         sidebar_layout.addWidget(self.modules_btn)
         sidebar_layout.addWidget(self.busbar_btn)
@@ -115,7 +120,8 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(DashboardPage())
        
 
-        self.pages.addWidget(CustomerPage())
+        self.pages.addWidget(CustomerPage()) # Index 1
+        self.pages.addWidget(QuotationPage(self)) # Index 2, pass self to QuotationPage
         self.pages.addWidget(PriceListPage())
         self.pages.addWidget(ModuleViewPage())
         self.pages.addWidget(BusbarPage())
@@ -188,21 +194,25 @@ class MainWindow(QMainWindow):
         self.pages.setCurrentIndex(1)
         UIStateManager.save_current_page(1)
 
-    def show_pricelist(self):
+    def show_quotations(self):
         self.pages.setCurrentIndex(2)
         UIStateManager.save_current_page(2)
 
-    def show_modules(self):
+    def show_pricelist(self):
         self.pages.setCurrentIndex(3)
         UIStateManager.save_current_page(3)
 
-    def show_busbar(self):
+    def show_modules(self):
         self.pages.setCurrentIndex(4)
         UIStateManager.save_current_page(4)
 
-    def show_master(self):
+    def show_busbar(self):
         self.pages.setCurrentIndex(5)
         UIStateManager.save_current_page(5)
+
+    def show_master(self):
+        self.pages.setCurrentIndex(6)
+        UIStateManager.save_current_page(6)
 
     def show_utilities(self):
         """Opens the Utilities window and ensures it comes to the front."""
@@ -240,3 +250,13 @@ class MainWindow(QMainWindow):
         self.tools_window.show()
         self.tools_window.raise_()
         self.tools_window.activateWindow()
+
+    def show_master_data_with_filter(self, table_name: str, column_name: str, filter_value: str):
+        """
+        Navigates to the Master Data page and applies a filter to a specific table and column.
+        """
+        master_data_page_index = 6 # MasterDataPage is at index 6
+        self.pages.setCurrentIndex(master_data_page_index)
+        master_data_page = self.pages.widget(master_data_page_index)
+        if hasattr(master_data_page, 'load_table_and_filter'):
+            master_data_page.load_table_and_filter(table_name, column_name, filter_value)

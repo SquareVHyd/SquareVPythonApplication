@@ -58,6 +58,23 @@ class SearchableTable(QTableWidget):
             "QHeaderView::section { background-color: #f7f7f7; padding: 6px; border: 1px solid #d9d9d9; }"
         )
 
+    def keyPressEvent(self, event):
+        """Handle Enter key to start/stop editing and maintain navigation."""
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+            if self.state() != QAbstractItemView.EditingState:
+                # Start editing on Enter
+                index = self.currentIndex()
+                if index.isValid() and (self.model().flags(index) & Qt.ItemIsEditable):
+                    self.edit(index)
+                    return
+            else:
+                # Commit and stay on the current cell
+                index = self.currentIndex()
+                super().keyPressEvent(event)
+                self.setCurrentIndex(index)
+                return
+        super().keyPressEvent(event)
+
     def fix_column_widths(self):
         header = self.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.Interactive)

@@ -45,9 +45,14 @@ class BusbarPage(QWidget):
         self.search_box.textChanged.connect(self._debounce_search)
 
         self.add_btn = QPushButton("➕ Add")
+        self.add_btn.setToolTip("(Ctrl+N)")
         self.edit_btn = QPushButton("✏️ Edit")
+        self.edit_btn.setToolTip("(Ctrl+E)")
         self.delete_btn = QPushButton("🗑️ Delete")
+        self.delete_btn.setToolTip("(Delete)")
         self.refresh_btn = QPushButton("🔄 Refresh")
+        self.refresh_btn.setToolTip("(Ctrl+R)")
+
         
         self.add_btn.clicked.connect(self.add_busbar)
         self.edit_btn.clicked.connect(self.edit_busbar)
@@ -271,7 +276,9 @@ class BusbarPage(QWidget):
         self.table.setRowCount(len(rows))
         for i, row in enumerate(rows):
             for j, val in enumerate(row):
-                self.table.setItem(i, j, NumericTableWidgetItem(str(val or "")))
+                item = NumericTableWidgetItem(str(val or ""))
+                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                self.table.setItem(i, j, item)
         self.table.setSortingEnabled(True)
         self._restore_state()
 

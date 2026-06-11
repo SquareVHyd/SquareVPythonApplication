@@ -8,17 +8,18 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QFrame,
     QMessageBox,
+    QSplitter,
 )
 from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtCore import Qt
 
 from app.ui.pricelist.pricelist_page import PriceListPage
 from app.ui.customers.customer_page import CustomerPage
-from app.ui.quotations.quotation_page import QuotationPage
 from app.ui.modules.module_view_page import ModuleViewPage
 from app.ui.busbar.busbar_page import BusbarPage
 from app.ui.master.master_data_page import MasterDataPage
 from app.config.ui_state import UIStateManager
+from app.ui.quotations.quotation_details_page import QuotationDetailsPage
 from app.ui.dashboard.dashboard_page import DashboardPage
 
 
@@ -36,13 +37,14 @@ class MainWindow(QMainWindow):
         geom = UIStateManager.get_window_geometry()
         self.setGeometry(geom["x"], geom["y"], geom["width"], geom["height"])
 
-        main_container = QWidget()
-        main_layout = QHBoxLayout(main_container)
-        main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_splitter = QSplitter(Qt.Horizontal)
+        self.main_splitter.setHandleWidth(1)
+        self.main_splitter.setStyleSheet("QSplitter::handle { background-color: #e2e8f0; }")
 
         sidebar_frame = QFrame()
         sidebar_frame.setObjectName("sidebar")
-        sidebar_frame.setFixedWidth(240)
+        sidebar_frame.setMinimumWidth(200)
+        sidebar_frame.setMaximumWidth(400)
         sidebar_layout = QVBoxLayout(sidebar_frame)
         sidebar_layout.setContentsMargins(20, 20, 20, 20)
         sidebar_layout.setSpacing(12)
@@ -65,7 +67,7 @@ class MainWindow(QMainWindow):
 
         self.dashboard_btn = QPushButton("📊 Dashboard")
         self.customers_btn = QPushButton("👥 Customers")
-        self.quotations_btn = QPushButton("📄 Quotations")
+        self.quotation_details_btn = QPushButton("📝 Quotation Details")
         self.pricelist_btn = QPushButton("🧾 Price List")
         self.modules_btn = QPushButton("📚 Modules")
         self.busbar_btn = QPushButton("⚡ Busbar Materials")
@@ -75,7 +77,7 @@ class MainWindow(QMainWindow):
 
         self.dashboard_btn.setToolTip(self.shortcuts_tip)
         self.customers_btn.setToolTip(self.shortcuts_tip)
-        self.quotations_btn.setToolTip(self.shortcuts_tip)
+        self.quotation_details_btn.setToolTip(self.shortcuts_tip)
         self.pricelist_btn.setToolTip(self.shortcuts_tip)
         self.modules_btn.setToolTip(self.shortcuts_tip)
         self.busbar_btn.setToolTip(self.shortcuts_tip)
@@ -83,7 +85,7 @@ class MainWindow(QMainWindow):
 
         self.dashboard_btn.clicked.connect(self.show_dashboard)
         self.customers_btn.clicked.connect(self.show_customers)
-        self.quotations_btn.clicked.connect(self.show_quotations)
+        self.quotation_details_btn.clicked.connect(self.show_quotation_details)
         self.pricelist_btn.clicked.connect(self.show_pricelist)
         self.modules_btn.clicked.connect(self.show_modules)
         self.busbar_btn.clicked.connect(self.show_busbar)
@@ -103,7 +105,7 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(title)
         sidebar_layout.addWidget(self.dashboard_btn)
         sidebar_layout.addWidget(self.customers_btn)
-        sidebar_layout.addWidget(self.quotations_btn)
+        sidebar_layout.addWidget(self.quotation_details_btn)
         sidebar_layout.addWidget(self.pricelist_btn)
         sidebar_layout.addWidget(self.modules_btn)
         sidebar_layout.addWidget(self.busbar_btn)
@@ -121,21 +123,22 @@ class MainWindow(QMainWindow):
        
 
         self.pages.addWidget(CustomerPage()) # Index 1
-        self.pages.addWidget(QuotationPage(self)) # Index 2, pass self to QuotationPage
         self.pages.addWidget(PriceListPage())
         self.pages.addWidget(ModuleViewPage())
         self.pages.addWidget(BusbarPage())
         self.pages.addWidget(MasterDataPage())
+        self.pages.addWidget(QuotationDetailsPage(self)) # Index 6
 
         self.shortcut_help = QShortcut(QKeySequence("F1"), self)
         self.shortcut_help.activated.connect(self.show_shortcuts)
         self.shortcut_help2 = QShortcut(QKeySequence("Ctrl+H"), self)
         self.shortcut_help2.activated.connect(self.show_shortcuts)
 
-        main_layout.addWidget(sidebar_frame)
-        main_layout.addWidget(self.pages, 1)
+        self.main_splitter.addWidget(sidebar_frame)
+        self.main_splitter.addWidget(self.pages)
+        self.main_splitter.setStretchFactor(1, 1)
 
-        self.setCentralWidget(main_container)
+        self.setCentralWidget(self.main_splitter)
         self.setStyleSheet(
             "#sidebar { background-color: #f0f2f5; } "
             "#appTitle { font-size: 20px; font-weight: bold; margin-bottom: 16px; } "
@@ -194,24 +197,30 @@ class MainWindow(QMainWindow):
         self.pages.setCurrentIndex(1)
         UIStateManager.save_current_page(1)
 
-    def show_quotations(self):
+    def show_pricelist(self):
         self.pages.setCurrentIndex(2)
         UIStateManager.save_current_page(2)
 
-    def show_pricelist(self):
+    def show_modules(self):
         self.pages.setCurrentIndex(3)
         UIStateManager.save_current_page(3)
 
-    def show_modules(self):
+    def show_busbar(self):
         self.pages.setCurrentIndex(4)
         UIStateManager.save_current_page(4)
 
-    def show_busbar(self):
+    def show_master(self):
         self.pages.setCurrentIndex(5)
         UIStateManager.save_current_page(5)
 
-    def show_master(self):
+    def show_quotation_details(self):
+        """Switches to the Quotation Details page within the main window."""
+        # Assuming QuotationDetailsPage is at index 6
         self.pages.setCurrentIndex(6)
+        # Automatically show the quotations list instead of the welcome screen
+        details_page = self.pages.widget(6)
+        if hasattr(details_page, 'show_quotations'):
+            details_page.show_quotations()
         UIStateManager.save_current_page(6)
 
     def show_utilities(self):
@@ -255,7 +264,7 @@ class MainWindow(QMainWindow):
         """
         Navigates to the Master Data page and applies a filter to a specific table and column.
         """
-        master_data_page_index = 6 # MasterDataPage is at index 6
+        master_data_page_index = 5 # MasterDataPage is at index 5
         self.pages.setCurrentIndex(master_data_page_index)
         master_data_page = self.pages.widget(master_data_page_index)
         if hasattr(master_data_page, 'load_table_and_filter'):

@@ -7,6 +7,9 @@ from PySide6.QtCore import Qt
 from app.ui.quotations.quotation_page import QuotationPage
 from app.ui.quotations.panel_page import PanelPage
 from app.ui.quotations.panel_module_page import PanelModulePage
+from app.ui.quotations.quotation_common_specs_page import QuotationCommonSpecsPage
+from app.ui.quotations.module_items_viewer_dialog import ModuleItemsViewerDialog # Import as a page
+from app.ui.quotations.quotation_revision_page import QuotationRevisionPage
 
 class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
     """A dedicated page for Quotation management with a sidebar layout."""
@@ -51,13 +54,10 @@ class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
         self.quotations_btn.clicked.connect(self.show_quotations)
         self.quotations_btn.setToolTip(self.shortcuts_tip)
 
-        self.form_btn = QPushButton("📝 Quotation Form")
-        self.form_btn.clicked.connect(self.show_form)
-        self.form_btn.setToolTip("Create or edit quotations")
-
         self.revision_btn = QPushButton("🔄 Revisions")
         self.revision_btn.clicked.connect(self.show_revision)
         self.revision_btn.setToolTip("Manage quotation revisions")
+        self.revision_btn.setEnabled(False)
 
         self.preview_btn = QPushButton("👁️ Preview")
         self.preview_btn.clicked.connect(self.show_preview)
@@ -73,12 +73,17 @@ class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
         self.panel_modules_btn.setToolTip("Manage modules for all panels in this quotation")
         self.panel_modules_btn.setEnabled(False)
 
+        self.items_btn = QPushButton("📦 Items")
+        self.items_btn.clicked.connect(self.show_items)
+        self.items_btn.setToolTip("View all module items for the selected quotation")
+        self.items_btn.setEnabled(False)
+
         sidebar_layout.addWidget(title)
         sidebar_layout.addWidget(self.quotations_btn)
-        sidebar_layout.addWidget(self.form_btn)
+        sidebar_layout.addWidget(self.revision_btn)
         sidebar_layout.addWidget(self.panels_btn)
         sidebar_layout.addWidget(self.panel_modules_btn)
-        sidebar_layout.addWidget(self.revision_btn)
+        sidebar_layout.addWidget(self.items_btn)
         sidebar_layout.addWidget(self.preview_btn)
         sidebar_layout.addStretch()
 
@@ -102,11 +107,17 @@ class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
         self.quotation_page = QuotationPage(self) # Pass self (QuotationDetailsPage) as parent
         self.panel_page = PanelPage(self) # Pass self (QuotationDetailsPage) as parent
         self.panel_module_page = PanelModulePage(self) # Pass self (QuotationDetailsPage) as parent
+        self.common_specs_page = QuotationCommonSpecsPage(self)
+        self.module_items_viewer_page = ModuleItemsViewerDialog(self) # Instantiate as a page
+        self.revision_page = QuotationRevisionPage(self)
 
         self.pages.addWidget(self.welcome_page)
         self.pages.addWidget(self.quotation_page)
         self.pages.addWidget(self.panel_page)
         self.pages.addWidget(self.panel_module_page)
+        self.pages.addWidget(self.common_specs_page)
+        self.pages.addWidget(self.module_items_viewer_page) # Add to stacked widget
+        self.pages.addWidget(self.revision_page)
 
         self.splitter.addWidget(sidebar_frame)
         self.splitter.addWidget(self.pages)
@@ -161,12 +172,38 @@ class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
     def update_panels_button_state(self, enabled):
         self.panels_btn.setEnabled(enabled)
         self.panel_modules_btn.setEnabled(enabled)
+        self.revision_btn.setEnabled(enabled)
+        self.items_btn.setEnabled(enabled)
 
-    def show_form(self):
-        pass
+    def show_common_specs(self):
+        selected = self.quotation_page.table.selectionModel().selectedRows()
+        if selected:
+            row = selected[0].row()
+            quote_id = int(self.quotation_page.table.item(row, 0).text())
+            project_name = self.quotation_page.table.item(row, 7).text()
+            self.common_specs_page.load_quotation(quote_id, project_name)
+            self.pages.setCurrentWidget(self.common_specs_page)
 
     def show_revision(self):
-        pass
+        selected = self.quotation_page.table.selectionModel().selectedRows()
+        if selected:
+            row = selected[0].row()
+            quote_id = int(self.quotation_page.table.item(row, 0).text())
+            project_name = self.quotation_page.table.item(row, 7).text()
+            self.revision_page.load_quotation(quote_id, project_name)
+            self.pages.setCurrentWidget(self.revision_page)
+        else:
+            self.show_quotations()
+
+    def show_items(self, initial_panel_id=None, initial_pm_id=None):
+        selected = self.quotation_page.table.selectionModel().selectedRows()
+        if selected:
+            row = selected[0].row()
+            quote_id = int(self.quotation_page.table.item(row, 0).text())
+            self.module_items_viewer_page.load_viewer(quote_id, initial_panel_id, initial_pm_id)
+            self.pages.setCurrentWidget(self.module_items_viewer_page)
+        else:
+            self.show_quotations()
 
     def show_preview(self):
         pass

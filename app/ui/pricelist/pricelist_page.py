@@ -163,8 +163,13 @@ class PriceListPage(QWidget):
             "MakeID"
         ])
         # self.table.hideColumn(0) # ID column is now visible
+        self.table.hideColumn(7)
+        self.table.hideColumn(8)
+        self.table.hideColumn(9)
         self.table.hideColumn(10)
         self.table.hideColumn(11)
+        
+
 
         self.table.setSelectionBehavior(
             QAbstractItemView.SelectRows

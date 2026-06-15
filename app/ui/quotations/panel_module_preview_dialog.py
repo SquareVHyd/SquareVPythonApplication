@@ -65,10 +65,10 @@ class PanelModulePreviewDialog(QDialog):
                 preview_content.append("<th>In/Out</th><th>Qty</th><th>Module Type</th><th>Pole</th><th>KA</th><th>Remark</th>")
                 preview_content.append("</tr>")
                 for module in modules:
-                    # Columns: ID, PanelID, IngOg, PanelModQty, ModuleTypeID, SwgType, ModPole, ModKa, Release, Protection, Remark
+                    # Columns: ID, PanelID, IngOg, PanelModQty, ModuleTypeID, Pnl_Module_Type, ModPole, ModKa, Release, Protection, Remark
                     ing_og = module[2]
                     qty = module[3]
-                    module_type = module[5] # SwgType
+                    module_type = module[5] # Pnl_Module_Type
                     pole = module[6]
                     ka = module[7]
                     remark = module[10]

@@ -4,8 +4,8 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QShortcut, QKeySequence
-
 from app.services.module_service import ModuleService
+from app.services.price_list_service import PriceListService
 from app.services.module_type_service import ModuleTypeService
 from app.ui.searchable_table import SearchableTable, NumericTableWidgetItem
 from app.ui.modules.price_list_lookup_dialog import PriceListLookupDialog
@@ -13,10 +13,12 @@ from app.utils.worker_thread import Worker
 
 
 class ModuleItemsDialog(QDialog):
+    # Assuming tbl_ModuleItems schema: ID (ModuleTypeID), DriveDescription (PK), BOM, LP, %Discount, Selection
     def __init__(self, module_type_id, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Module Item Manager")
         self.resize(900, 600)
+        from app.ui.modules.module_item_form import ModuleItemForm # Import here to avoid circular dependency
         
         self.module_service = ModuleService()
         self.type_service = ModuleTypeService()
@@ -54,10 +56,10 @@ class ModuleItemsDialog(QDialog):
         layout.addLayout(top_layout)
         
         # Table
-        self.table = SearchableTable()
+        self.table = SearchableTable() # Assuming tbl_ModuleItems schema: ID (ModuleTypeID), DriveDescription (PK), BOM, LP, %Discount, Selection
         self.table.setStyleSheet("QTableView { selection-background-color: #93c5fd; selection-color: #000000; } QHeaderView::section { background-color: #fce4ec; border: 1px solid #e2e8f0; }")
-        self.table.setColumnCount(5) # These labels should match the query in ModuleService.get_items_by_module_type
-        self.table.setHorizontalHeaderLabels([ # These labels should match the query in ModuleService.get_items_by_module_type
+        self.table.setColumnCount(7) # SEQNo, ModuleItemID, Drive Description, BOM, LP, % Discount, Selection
+        self.table.setHorizontalHeaderLabels([
             "SEQNo", "Item ID", "Description", "Qty", "ModuleItemID"
         ])
         self.table.hideColumn(0) # Hide SEQNo column as per request
@@ -135,11 +137,19 @@ class ModuleItemsDialog(QDialog):
         self._worker = None
 
     def _render(self, rows):
+        # rows are expected to be: (module_item_id, drive_description, bom, lp, discount, selection, sequence_number)
         self.table.setSortingEnabled(False)
         self.table.setRowCount(len(rows))
         for r, row in enumerate(rows):
-            for c in range(len(row)):
-                self.table.setItem(r, c, NumericTableWidgetItem(str(row[c] if row[c] is not None else "")))
+            # Column mapping for the new table headers:
+            # "SEQNo" (0), "ModuleItemID" (1), "Drive Description" (2), "BOM" (3), "LP" (4), "% Discount" (5), "Selection" (6)
+            self.table.setItem(r, 0, NumericTableWidgetItem(str(row[6] if row[6] is not None else ""))) # Sequence Number
+            self.table.setItem(r, 1, NumericTableWidgetItem(str(row[0] if row[0] is not None else ""))) # ModuleItemID
+            self.table.setItem(r, 2, NumericTableWidgetItem(str(row[1] if row[1] is not None else ""))) # Drive Description
+            self.table.setItem(r, 3, NumericTableWidgetItem(str(row[2] if row[2] is not None else ""))) # BOM
+            self.table.setItem(r, 4, NumericTableWidgetItem(str(row[3] if row[3] is not None else ""))) # LP
+            self.table.setItem(r, 5, NumericTableWidgetItem(f"{float(row[4])*100:.2f}" if row[4] is not None else "")) # % Discount (display as percentage)
+            self.table.setItem(r, 6, NumericTableWidgetItem(str(row[5] if row[5] is not None else ""))) # Selection
         self.table.setSortingEnabled(True)
         self._update_visual_indices()
 
@@ -169,7 +179,7 @@ class ModuleItemsDialog(QDialog):
                 labels[l_row] = display_num
                 
                 # Update the hidden column 0 (SEQNo) so it reflects the current visual position
-                item = self.table.item(l_row, 0)
+                item = self.table.item(l_row, 0) # SEQNo column
                 if item:
                     item.setText(display_num)
             
@@ -185,29 +195,24 @@ class ModuleItemsDialog(QDialog):
             items_to_update = []
 
             # 1. Collect all visual items first to get a consistent snapshot
+            # (module_item_id, drive_description, bom, lp, discount, selection, sequence_number)
             for v_row in range(row_count):
                 l_row = self.table.verticalHeader().logicalIndex(v_row)
                 items_to_update.append({
-                    "module_item_id": int(self.table.item(l_row, 4).text()),
-                    "item_id": int(self.table.item(l_row, 1).text()),
-                    "qty": float(self.table.item(l_row, 3).text()),
+                    "module_item_id": int(self.table.item(l_row, 1).text()), # ModuleItemID
+                    "drive_description": self.table.item(l_row, 2).text(),
+                    "bom": float(self.table.item(l_row, 3).text()),
+                    "lp": float(self.table.item(l_row, 4).text()),
+                    "discount": float(self.table.item(l_row, 5).text()) / 100.0, # Convert back to fraction
+                    "selection": self.table.item(l_row, 6).text(),
                     "new_seq": v_row + 1
                 })
 
-            # 2. Define a temporary offset greater than the largest possible sequence number
-            # to avoid uq_module_seq constraint violations during the update process.
-            temp_offset = row_count + 1000
-
-            # 3. Pass 1: Move items to temporary high sequence numbers to "clear" the [1, N] range.
+            # Update sequence numbers directly. Assuming the DB handles sequence updates.
             for item in items_to_update:
-                self.module_service.update_module(
-                    item["module_item_id"], self.current_type_id, item["item_id"], item["qty"], item["new_seq"] + temp_offset
-                )
-
-            # 4. Pass 2: Apply the final intended sequence numbers.
-            for item in items_to_update:
-                self.module_service.update_module(
-                    item["module_item_id"], self.current_type_id, item["item_id"], item["qty"], item["new_seq"]
+                self.module_service.update_module_item(
+                    item["module_item_id"], self.current_type_id, item["drive_description"],
+                    item["bom"], item["lp"], item["discount"], item["selection"], item["new_seq"]
                 )
         except Exception as e:
             print(f"Error saving module item states: {e}")
@@ -230,54 +235,70 @@ class ModuleItemsDialog(QDialog):
         filtered = [
             row for row in self._cache 
             if keyword in str(row[0]).lower()   # SEQNo
-            or keyword in str(row[1]).lower()   # Item ID (now effectively the first searchable column)
-            or keyword in str(row[2]).lower()   # Description
-            or keyword in str(row[4]).lower()   # ModuleItemID
+            or keyword in str(row[1]).lower()   # ModuleItemID
+            or keyword in str(row[2]).lower()   # Drive Description
+            or keyword in str(row[3]).lower()   # BOM
+            or keyword in str(row[4]).lower()   # LP
+            or keyword in str(row[5]).lower()   # % Discount
+            or keyword in str(row[6]).lower()   # Selection
         ]
         self._render(filtered)
 
     def _add_items(self):
-        dialog = PriceListLookupDialog(self)
-        if dialog.exec():
-            selected_items = dialog.selected_price_items
-            if not selected_items: return
-            
-            max_seq = self.table.rowCount() # New items will be added at the end, so their sequence is current row count + 1
+        from app.ui.modules.module_item_form import ModuleItemForm
+        dialog = ModuleItemForm(self.current_type_id, parent=self)
+        if dialog.exec() == QDialog.Accepted:
+            data = dialog.get_data()
+            if data:
+                try:
+                    # Get max sequence for new item
+                    max_seq = 0
+                    if self.table.rowCount() > 0:
+                        for r in range(self.table.rowCount()):
+                            seq_item = self.table.item(r, 0) # SEQNo column
+                            if seq_item:
+                                max_seq = max(max_seq, int(seq_item.text()))
+                    data["sequence_number"] = max_seq + 1
 
-            for item in selected_items:
-                price_list_id = item[0] # item is (ID, ItemDescription)
-                max_seq += 1
-                # create_module(module_type_id, price_list_item_id, quantity, sequence_number)
-                # The create_module call will now correctly save to the database due to the commit in the repository.
-                # The _load_items_async() call after the loop will refresh the UI.
-                self.module_service.create_module(self.current_type_id, price_list_id, 1, max_seq)
-            self._load_items_async()
+                    self.module_service.create_module_item(**data)
+                    QMessageBox.information(self, "Success", "Module item added successfully.")
+                    self._load_items_async()
+                except Exception as e:
+                    QMessageBox.critical(self, "Error", f"Failed to add module item: {e}")
 
     def _edit_item(self):
         selected = self.table.selectedItems()
         if not selected: return
         row = selected[0].row()
         
-        # Get current values
-        current_seq = int(self.table.item(row, 0).text()) # Get current SEQNo from hidden column
-        item_id = int(self.table.item(row, 1).text())
+        module_item_id = int(self.table.item(row, 1).text()) # ModuleItemID
+        current_data = {
+            "module_item_id": module_item_id,
+            "drive_description": self.table.item(row, 2).text(),
+            "bom": float(self.table.item(row, 3).text()),
+            "lp": float(self.table.item(row, 4).text()),
+            "discount": float(self.table.item(row, 5).text()) / 100.0, # Convert back to fraction
+            "selection": self.table.item(row, 6).text(),
+            "sequence_number": int(self.table.item(row, 0).text()) # SEQNo
+        }
         
-        module_item_id = int(self.table.item(row, 4).text()) # ModuleItemID is at column 4
-        qty, ok1 = QInputDialog.getDouble(self, "Edit Quantity", "Enter Quantity:", float(self.table.item(row, 3).text()), 0, 1000000, 2)
-        if not ok1: return
-        
-        # Update UI directly; database update is removed to prevent SQL errors
-        self.table.item(row, 3).setText(str(qty))
+        from app.ui.modules.module_item_form import ModuleItemForm
+        dialog = ModuleItemForm(self.current_type_id, module_item_data=current_data, parent=self)
+        if dialog.exec() == QDialog.Accepted:
+            data = dialog.get_data()
+            if data:
+                try:
+                    self.module_service.update_module_item(module_item_id, **data)
+                    QMessageBox.information(self, "Success", "Module item updated successfully.")
+                    self._load_items_async()
+                except Exception as e:
+                    QMessageBox.critical(self, "Error", f"Failed to update module item: {e}")
 
     def _remove_items(self):
         selected = self.table.selectionModel().selectedRows()
         if not selected: return
         if QMessageBox.question(self, "Remove", f"Remove {len(selected)} items?") == QMessageBox.Yes:
-            # Iterate through selected rows and delete each module item
-            # It's safer to iterate in reverse if deleting from the underlying data structure
-            # but here we are just calling a service method and then reloading all data.
-            # The ModuleItemID is at column 4
             for index in sorted(selected, key=lambda x: x.row(), reverse=True):
-                module_item_id = int(self.table.item(index.row(), 4).text()) # This will also commit changes
-                self.module_service.delete_module(module_item_id) 
+                module_item_id = int(self.table.item(index.row(), 1).text()) # ModuleItemID is at column 1
+                self.module_service.delete_module_item(module_item_id) 
             self._load_items_async()

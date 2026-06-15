@@ -5,12 +5,14 @@ class ComboBoxDelegate(QStyledItemDelegate):
     """
     A custom item delegate that provides a QComboBox editor for specific table columns.
     """
-    def __init__(self, parent=None, items=None):
+    def __init__(self, parent=None, items=None, editable=False):
         super().__init__(parent)
         self._items = items if items is not None else []
+        self._editable = editable
 
     def createEditor(self, parent, option, index):
         editor = QComboBox(parent)
+        editor.setEditable(self._editable)
         editor.addItems(self._items)
         # Automatically open the dropdown list when the editor is created
         QTimer.singleShot(0, editor.showPopup)
@@ -25,7 +27,11 @@ class ComboBoxDelegate(QStyledItemDelegate):
             editor.setCurrentIndex(0) # Default to first item or empty
 
     def setModelData(self, editor, model, index):
-        model.setData(index, editor.currentText(), Qt.EditRole)
+        val = editor.currentText().strip()
+        # Update the underlying shared list if a new value is typed
+        if self._editable and val and val not in self._items:
+            self._items.append(val)
+        model.setData(index, val, Qt.EditRole)
 
     def updateEditorGeometry(self, editor, option, index):
         editor.setGeometry(option.rect)

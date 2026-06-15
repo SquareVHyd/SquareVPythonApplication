@@ -243,6 +243,86 @@ class SteelSelectorDialog(QDialog):
     def get_result(self):
         return str(self.total)
 
+class PanelBBSelectorDialog(QDialog):
+    """Dialog to manage busbar specifications for a specific panel."""
+    def __init__(self, panel_id, parent=None):
+        super().__init__(parent)
+        self.panel_id = panel_id
+        self.setWindowTitle(f"Busbar Specification for Panel ID: {panel_id}")
+        self.resize(1100, 400)
+        self.service = QuotationService()
+        
+        layout = QVBoxLayout(self)
+
+        self.table = SearchableTable()
+        self.table.setColumnCount(14)
+        self.table.setHorizontalHeaderLabels([
+            "ID", "PanelID", "Neutral Rating", "Bus Section", "Section Qty", "Amps Req",
+            "Amps Sel", "Clearence", "Qty PH", "Qty Nu", "Qty Earth",
+            "BB Phase", "BB Neutral", "BB Earth"
+        ])
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        layout.addWidget(self.table)
+        
+        self.load_data()
+
+        self.btn_save = QPushButton("💾 Save Busbar Specification & Close")
+        self.btn_save.setStyleSheet("background-color: #0277bd; color: white; font-weight: bold; padding: 8px;")
+        self.btn_save.clicked.connect(self.accept)
+        layout.addWidget(self.btn_save)
+
+    def load_data(self):
+        self.table.blockSignals(True)
+        rows = self.service.get_panel_bb_configs_by_panel(self.panel_id)
+        self.table.setRowCount(len(rows))
+        for r, row in enumerate(rows):
+            for c, val in enumerate(row):
+                text = str(val) if val is not None else ""
+                item = NumericTableWidgetItem(text)
+                item.setFlags(item.flags() | Qt.ItemIsEditable if c >= 2 else item.flags() & ~Qt.ItemIsEditable)
+                self.table.setItem(r, c, item)
+        self.table.resizeColumnsToContents()
+        self.table.blockSignals(False)
+
+    def accept(self):
+        if self.table.rowCount() == 0:
+            super().accept()
+            return
+
+        try:
+            row = 0
+            bb_id = int(self.table.item(row, 0).text())
+            
+            def get_text(c, default):
+                item = self.table.item(row, c)
+                val = item.text().strip() if item else ""
+                return val if val else default
+
+            def get_int(c, default):
+                item = self.table.item(row, c)
+                val = item.text().strip() if item else ""
+                try: return int(val) if val else default
+                except: return default
+
+            data = {
+                "NeutralRating": get_int(2, 100),
+                "BusSection": get_text(3, "Main"),
+                "BusSectionQty": get_int(4, 1),
+                "AmpsRequested": get_int(5, 0),
+                "AmpsSelected": get_text(6, "0"),
+                "BusbarClearence": get_text(7, "Standard"),
+                "BB_QtyPH": get_int(8, 1),
+                "BB_QtyNu": get_int(9, 1),
+                "BB_QtyEarth": get_int(10, 1),
+                "Select_BB_Phase": get_text(11, ""),
+                "Select_BB_Neutral": get_text(12, ""),
+                "Select_BB_Earth": get_text(13, "")
+            }
+            self.service.update_full_panel_bb_config(bb_id, data)
+            super().accept()
+        except Exception as e:
+            QMessageBox.critical(self, "Save Error", f"Failed to save record: {e}")
+
 class PanelPage(QWidget):
     """Page to manage panels for a specific quotation, displayed in-place."""
     
@@ -338,6 +418,7 @@ class PanelPage(QWidget):
         pids = [r[0] for r in rows]
         if pids:
             self.service.ensure_steel_configs_for_panels(pids)
+            self.service.ensure_panel_bb_configs_for_panels(pids)
         self._render(self._cache)
         self.status_bar.showMessage(f"Found {len(rows)} panels", 5000)
         self._worker = None
@@ -394,10 +475,19 @@ class PanelPage(QWidget):
         select_steel_action = QAction(f"Select Steel Panel for: {panel_name}", self)
         select_steel_action.triggered.connect(lambda: self._open_steel_selector(panel_id))
         menu.addAction(select_steel_action)
+
+        select_bb_action = QAction(f"Busbar Details for: {panel_name}", self)
+        select_bb_action.triggered.connect(lambda: self._open_bb_selector(panel_id))
+        menu.addAction(select_bb_action)
+
         menu.exec(self.table.viewport().mapToGlobal(pos))
 
     def _open_steel_selector(self, panel_id):
         dialog = SteelSelectorDialog(panel_id, self)
+        dialog.exec()
+
+    def _open_bb_selector(self, panel_id):
+        dialog = PanelBBSelectorDialog(panel_id, self)
         dialog.exec()
 
     def add_panel(self):

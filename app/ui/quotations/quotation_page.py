@@ -9,6 +9,8 @@ from PySide6.QtGui import QShortcut, QKeySequence, QAction
 
 from app.services.quotation_service import QuotationService
 from app.ui.quotations.quotation_form import QuotationForm
+from app.ui.quotations.quotation_ctc_dialog import QuotationCTCDialog
+from app.ui.quotations.module_items_viewer_dialog import ModuleItemsViewerDialog
 from app.ui.searchable_table import SearchableTable, NumericTableWidgetItem
 from app.utils.worker_thread import Worker
 
@@ -41,6 +43,9 @@ class QuotationPage(QWidget):
         self.refresh_btn = QPushButton("🔄 Refresh")
         self.refresh_btn.clicked.connect(self.refresh_table)
         
+        self.items_btn = QPushButton("📦 Items")
+        self.items_btn.clicked.connect(self._show_items_viewer)
+
         self.add_btn = QPushButton("➕ Add")
         self.add_btn.setToolTip("(Ctrl+N)")
         self.add_btn.clicked.connect(self.add_quotation)
@@ -57,6 +62,7 @@ class QuotationPage(QWidget):
         header.addStretch()
         header.addWidget(self.search_box)
         header.addWidget(self.refresh_btn)
+        header.addWidget(self.items_btn)
         header.addWidget(self.add_btn)
         header.addWidget(self.edit_btn)
         header.addWidget(self.delete_btn)
@@ -179,6 +185,17 @@ class QuotationPage(QWidget):
         if hasattr(self.parent_quotation_details_page, 'open_panel_view'):
             self.parent_quotation_details_page.open_panel_view(quote_id, project_name)
 
+    def _show_items_viewer(self):
+        """Opens the Module Items Viewer for the selected quotation."""
+        selected = self.table.selectionModel().selectedRows()
+        if not selected:
+            QMessageBox.warning(self, "Selection Required", "Please select a quotation to view its items.")
+            return
+        row = selected[0].row()
+        quote_id = int(self.table.item(row, 0).text())
+        # Call the show_items method of the parent QuotationDetailsPage/Window
+        self.parent_quotation_details_page.show_items()
+
     def refresh_table(self):
         if self._worker: return
         self.status_bar.showMessage("Fetching quotations...")
@@ -220,14 +237,46 @@ class QuotationPage(QWidget):
         if not item: return
         
         row = item.row()
+        quote_id = int(self.table.item(row, 0).text())
+        project_name = self.table.item(row, 7).text()
         customer_id = self.table.item(row, 1).text()
         customer_name = self.table.item(row, 2).text()
         
         menu = QMenu(self)
+        items_action = QAction(f"📦 View Module Items: {project_name}", self)
+        items_action.triggered.connect(lambda: self.parent_quotation_details_page.show_items())
+        menu.addAction(items_action)
+
+        ctc_action = QAction(f"📋 Quotation CTC: {project_name}", self)
+        ctc_action.triggered.connect(lambda: self._open_ctc_dialog(quote_id, project_name))
+        menu.addAction(ctc_action)
+
+        specs_action = QAction(f"📋 Common Specs: {project_name}", self)
+        specs_action.triggered.connect(self._open_common_specs)
+        menu.addAction(specs_action)
+
+        rev_action = QAction(f"🔄 Revisions: {project_name}", self)
+        rev_action.triggered.connect(self._open_revisions)
+        menu.addAction(rev_action)
+
+        menu.addSeparator()
+
         view_cust_action = QAction(f"View Customer: {customer_name}", self)
         view_cust_action.triggered.connect(lambda: self._view_customer_details(customer_id))
         menu.addAction(view_cust_action)
         menu.exec(self.table.viewport().mapToGlobal(pos))
+
+    def _open_common_specs(self):
+        if self.parent_quotation_details_page:
+            self.parent_quotation_details_page.show_common_specs()
+
+    def _open_revisions(self):
+        if self.parent_quotation_details_page:
+            self.parent_quotation_details_page.show_revision()
+
+    def _open_ctc_dialog(self, quote_id, project_name):
+        dialog = QuotationCTCDialog(quote_id, project_name, self)
+        dialog.exec()
 
     def _view_customer_details(self, customer_id):
         dialog = CustomerViewDialog(customer_id, self)

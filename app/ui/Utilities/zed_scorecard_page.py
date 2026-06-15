@@ -6,7 +6,8 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont
-import pyodbc
+from sqlalchemy import text
+from app.config.database import get_session
 from datetime import datetime
 import csv
 import os
@@ -152,6 +153,33 @@ def _draw_logo_fallback(c, x, y, w, h):
     p.close(); c.drawPath(p, fill=1, stroke=0)
 # ─────────────────────────────────────────────────────────────────────────────
 
+class DB:
+    @staticmethod
+    def execute(sql, params=None, fetch=False, commit=False):
+        with get_session() as session:
+            try:
+                result = session.execute(text(sql), params or {})
+                if fetch:
+                    return [list(row) for row in result.fetchall()]
+                if commit:
+                    session.commit()
+                return True 
+            except Exception as exc:
+                print(f"Database Error: {exc}")
+                if commit: session.rollback()
+                return False 
+
+    @staticmethod
+    def fetchone(sql, params=None):
+        with get_session() as session:
+            try:
+                result = session.execute(text(sql), params or {})
+                row = result.fetchone()
+                return list(row) if row else None
+            except Exception as exc:
+                print(f"Fetch Failed: {exc}")
+                return None
+
 
 class ZEDScoreCardPage(QWidget):
     """PySide6 implementation of the ZED ScoreCard management tool."""
@@ -187,13 +215,6 @@ class ParameterWorkspaceWidget(QWidget):
         self.setup_ui()
         self.refresh_kpis()
         self.refresh_grid()
-
-    def get_db_connection(self):
-        try:
-            return pyodbc.connect(f"DSN={DSN_NAME};")
-        except Exception as e:
-            print(f"Connection Error: {e}")
-            return None
 
     def setup_ui(self):
         main_layout = QHBoxLayout(self)
@@ -321,12 +342,13 @@ class ParameterWorkspaceWidget(QWidget):
         self.btn_cancel.hide()
 
     def refresh_kpis(self):
-        conn = self.get_db_connection()
-        if not conn: return
-        cursor = conn.cursor()
-        cursor.execute("SELECT m.kpi_name FROM metrics m JOIN categories c ON m.category_id = c.id WHERE c.name = ? ORDER BY m.kpi_name", (self.category_name,))
-        kpi_list = [row[0] for row in cursor.fetchall()]
-        conn.close()
+        query = """
+            SELECT m.kpi_name FROM metrics m 
+            JOIN categories c ON m.category_id = c.id 
+            WHERE c.name = :name ORDER BY m.kpi_name
+        """
+        rows = DB.execute(query, {"name": self.category_name}, fetch=True)
+        kpi_list = [row[0] for row in rows]
         self.cb_metric.clear()
         self.cb_metric.addItems(kpi_list)
         self.cb_filter_kpi.clear()
@@ -335,12 +357,9 @@ class ParameterWorkspaceWidget(QWidget):
 
     def on_form_kpi_selected(self, kpi):
         if not kpi: return
-        conn = self.get_db_connection()
-        if not conn: return
-        cursor = conn.cursor()
-        cursor.execute("SELECT DISTINCT s.sub_name FROM sub_targets s JOIN metrics m ON s.metric_id = m.id WHERE m.kpi_name = ? ORDER BY s.sub_name", (kpi,))
-        zones = [row[0] for row in cursor.fetchall()]
-        conn.close()
+        query = "SELECT DISTINCT s.sub_name FROM sub_targets s JOIN metrics m ON s.metric_id = m.id WHERE m.kpi_name = :kpi ORDER BY s.sub_name"
+        rows = DB.execute(query, {"kpi": kpi}, fetch=True)
+        zones = [row[0] for row in rows]
         self.cb_sub.clear()
         self.cb_sub.addItems(zones)
 
@@ -362,37 +381,31 @@ class ParameterWorkspaceWidget(QWidget):
         except ValueError:
             return
 
-        conn = self.get_db_connection()
-        if not conn: return
-        cursor = conn.cursor()
-        
         query = """
             SELECT r.id, m.kpi_name, COALESCE(s.sub_name, '- Global -'), r.record_date, r.actual_value, COALESCE(r.remarks, '') 
             FROM monthly_records r 
             JOIN metrics m ON r.metric_id = m.id 
             JOIN categories c ON m.category_id = c.id 
             LEFT JOIN sub_targets s ON r.sub_target_id = s.id 
-            WHERE c.name = ? AND r.record_date BETWEEN ? AND ?
+            WHERE c.name = :cat_name AND r.record_date BETWEEN :start AND :end
         """
-        params = [self.category_name, start_iso, end_iso]
+        params = {"cat_name": self.category_name, "start": start_iso, "end": end_iso}
         
         fkpi = self.cb_filter_kpi.currentText()
         if fkpi and fkpi != "- All Parameters -":
-            query += " AND m.kpi_name = ?"
-            params.append(fkpi)
+            query += " AND m.kpi_name = :fkpi"
+            params["fkpi"] = fkpi
             
         fzone = self.cb_filter_zone.currentText()
         if fzone and fzone != "- All Zones -":
             if fzone == "- Global -":
                 query += " AND s.sub_name IS NULL"
             else:
-                query += " AND s.sub_name = ?"
-                params.append(fzone)
+                query += " AND s.sub_name = :fzone"
+                params["fzone"] = fzone
 
         query += " ORDER BY r.record_date ASC"
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-        conn.close()
+        rows = DB.execute(query, params, fetch=True)
         
         self.table.setRowCount(len(rows))
         chart_data = []
@@ -528,41 +541,35 @@ class ParameterWorkspaceWidget(QWidget):
             QMessageBox.critical(self, "Error", "Invalid numeric value or date format (YYYY-MM).")
             return
 
-        conn = self.get_db_connection()
-        if not conn: return
-        cursor = conn.cursor()
-        try:
-            cursor.execute("SELECT id FROM categories WHERE name = ?", (self.category_name,))
-            cat_id = cursor.fetchone()[0]
-            cursor.execute("SELECT id FROM metrics WHERE category_id = ? AND kpi_name = ?", (cat_id, kpi))
-            metric_id = cursor.fetchone()[0]
+        with get_session() as session:
+            try:
+                cat_id = session.execute(text("SELECT id FROM categories WHERE name = :name"), {"name": self.category_name}).scalar()
+                metric_id = session.execute(text("SELECT id FROM metrics WHERE category_id = :cat_id AND kpi_name = :kpi"), {"cat_id": cat_id, "kpi": kpi}).scalar()
 
-            sub_id = None
-            if sub and sub != "- Global -":
-                cursor.execute("SELECT id FROM sub_targets WHERE metric_id = ? AND sub_name = ?", (metric_id, sub))
-                res = cursor.fetchone()
-                if not res:
-                    cursor.execute("INSERT INTO sub_targets (metric_id, sub_name) VALUES (?, ?)", (metric_id, sub))
-                    cursor.execute("SELECT id FROM sub_targets WHERE metric_id = ? AND sub_name = ?", (metric_id, sub))
-                    sub_id = cursor.fetchone()[0]
+                sub_id = None
+                if sub and sub != "- Global -":
+                    res = session.execute(text("SELECT id FROM sub_targets WHERE metric_id = :mid AND sub_name = :sub"), {"mid": metric_id, "sub": sub}).fetchone()
+                    if not res:
+                        session.execute(text("INSERT INTO sub_targets (metric_id, sub_name) VALUES (:mid, :sub)"), {"mid": metric_id, "sub": sub})
+                        session.commit()
+                        sub_id = session.execute(text("SELECT id FROM sub_targets WHERE metric_id = :mid AND sub_name = :sub"), {"mid": metric_id, "sub": sub}).scalar()
+                    else:
+                        sub_id = res[0]
+
+                if self.editing_record_id:
+                    session.execute(text("UPDATE monthly_records SET actual_value=:val, remarks=:rem, record_date=:date, sub_target_id=:sid WHERE id=:id"), 
+                                 {"val": val_num, "rem": rem, "date": iso_date, "sid": sub_id, "id": self.editing_record_id})
                 else:
-                    sub_id = res[0]
-
-            if self.editing_record_id:
-                cursor.execute("UPDATE monthly_records SET actual_value=?, remarks=?, record_date=?, sub_target_id=? WHERE id=?", 
-                             (val_num, rem, iso_date, sub_id, self.editing_record_id))
-            else:
-                cursor.execute("INSERT INTO monthly_records (metric_id, sub_target_id, record_date, actual_value, remarks) VALUES (?,?,?,?,?)",
-                             (metric_id, sub_id, iso_date, val_num, rem))
-            
-            conn.commit()
-            QMessageBox.information(self, "Success", "Record saved to cloud database.")
-            self.clear_form_fields()
-            self.refresh_grid()
-        except Exception as e:
-            QMessageBox.critical(self, "Database Error", str(e))
-        finally:
-            conn.close()
+                    session.execute(text("INSERT INTO monthly_records (metric_id, sub_target_id, record_date, actual_value, remarks) VALUES (:mid, :sid, :date, :val, :rem)"),
+                                 {"mid": metric_id, "sid": sub_id, "date": iso_date, "val": val_num, "rem": rem})
+                
+                session.commit()
+                QMessageBox.information(self, "Success", "Record saved to cloud database.")
+                self.clear_form_fields()
+                self.refresh_grid()
+            except Exception as e:
+                session.rollback()
+                QMessageBox.critical(self, "Database Error", str(e))
 
     def load_selected_for_edit(self):
         row = self.table.currentRow()
@@ -584,12 +591,8 @@ class ParameterWorkspaceWidget(QWidget):
         row = self.table.currentRow()
         if row < 0: return
         if QMessageBox.question(self, "Delete", "Remove this record?") == QMessageBox.Yes:
-            conn = self.get_db_connection()
-            if not conn: return
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM monthly_records WHERE id = ?", (self.table.item(row, 0).text(),))
-            conn.commit()
-            conn.close()
+            record_id = int(self.table.item(row, 0).text())
+            DB.execute("DELETE FROM monthly_records WHERE id = :id", {"id": record_id}, commit=True)
             self.refresh_grid()
 
     def export_to_csv(self):

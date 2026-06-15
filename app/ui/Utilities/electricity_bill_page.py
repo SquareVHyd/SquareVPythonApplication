@@ -9,52 +9,41 @@ from PySide6.QtGui import QFont
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
-import pyodbc
+from sqlalchemy import text
+from app.config.database import get_session
 import csv
 import os
 import webbrowser
 from datetime import datetime
 
-DSN_NAME = "PostgreSQLLH"
 ALL_COLS = "id, billing_month, eb_kvah_old, eb_kvah_new, eb_charged_units, eb_pf, unit_rate, total_bill_amount, derived_fixed_charges, sri_old, sri_new, sri_units, sri_pct, sri_total, sq_old, sq_new, sq_units, sq_pct, sq_total, excess_units, eb_kwh_old, eb_kwh_new"
 
 class DB:
     @staticmethod
-    def connect():
-        return pyodbc.connect(f"DSN={DSN_NAME};", autocommit=True)
+    def execute(sql, params=None, fetch=False, commit=False):
+        with get_session() as session:
+            try:
+                result = session.execute(text(sql), params or {})
+                if fetch:
+                    return [list(row) for row in result.fetchall()]
+                if commit:
+                    session.commit()
+                return True 
+            except Exception as exc:
+                print(f"Database Error: {exc}")
+                if commit: session.rollback()
+                return False 
 
     @staticmethod
-    def execute(sql, params=(), fetch=False, commit=False):
-        conn = None
-        try:
-            conn = DB.connect()
-            cur = conn.cursor()
-            cur.execute(sql, params)
-            if fetch:
-                return [list(row) for row in cur.fetchall()]
-            if commit:
-                conn.commit()
-            return True 
-        except Exception as exc:
-            print(f"Database Error: {exc}")
-            return False 
-        finally:
-            if conn: conn.close()
-
-    @staticmethod
-    def fetchone(sql, params=()):
-        conn = None
-        try:
-            conn = DB.connect()
-            cur = conn.cursor()
-            cur.execute(sql, params)
-            row = cur.fetchone()
-            return list(row) if row else None
-        except Exception as exc:
-            print(f"Fetch Failed: {exc}")
-            return None
-        finally:
-            if conn: conn.close()
+    def fetchone(sql, params=None):
+        with get_session() as session:
+            try:
+                result = session.execute(text(sql), params or {})
+                row = result.fetchone()
+                return list(row) if row else None
+            except Exception as exc:
+                print(f"Fetch Failed: {exc}")
+                return None
 
 def get_date_obj(month_str):
     try:
@@ -362,27 +351,34 @@ class ElectricityBillPage(QWidget):
             sri_final = (sri_units * rate) + half_fixed + sri_shared_amt
             sq_final = (sq_units * rate) + half_fixed + sq_shared_amt
 
-            data_tuple = (month, kvah_old, kvah_new, eb_units, eb_pf, rate, total_bill, derived_fixed_charges,
-                          sri_old_val, sri_new_val, sri_units, sri_pct, sri_final,
-                          sq_old_val, sq_new_val, sq_units, sq_pct, sq_final, excess_units, kwh_old, kwh_new)
+            data_dict = {
+                "month": month, "kvah_old": kvah_old, "kvah_new": kvah_new, "eb_units": eb_units, 
+                "eb_pf": eb_pf, "rate": rate, "total_bill": total_bill, "fixed_charges": derived_fixed_charges,
+                "sri_old": sri_old_val, "sri_new": sri_new_val, "sri_units": sri_units, "sri_pct": sri_pct, "sri_total": sri_final,
+                "sq_old": sq_old_val, "sq_new": sq_new_val, "sq_units": sq_units, "sq_pct": sq_pct, "sq_total": sq_final, 
+                "excess": excess_units, "kwh_old": kwh_old, "kwh_new": kwh_new
+            }
 
             if self.current_edit_id:
+                data_dict["id"] = self.current_edit_id
                 query = f"""UPDATE public."tbl_EBbillR1" SET 
-                            billing_month=?, eb_kvah_old=?, eb_kvah_new=?, eb_charged_units=?, eb_pf=?, unit_rate=?, 
-                            total_bill_amount=?, derived_fixed_charges=?, 
-                            sri_old=?, sri_new=?, sri_units=?, sri_pct=?, sri_total=?, 
-                            sq_old=?, sq_new=?, sq_units=?, sq_pct=?, sq_total=?, excess_units=?,
-                            eb_kwh_old=?, eb_kwh_new=?
-                            WHERE id=?"""
-                result = DB.execute(query, data_tuple + (self.current_edit_id,), commit=True)
+                            billing_month=:month, eb_kvah_old=:kvah_old, eb_kvah_new=:kvah_new, eb_charged_units=:eb_units, eb_pf=:eb_pf, unit_rate=:rate, 
+                            total_bill_amount=:total_bill, derived_fixed_charges=:fixed_charges, 
+                            sri_old=:sri_old, sri_new=:sri_new, sri_units=:sri_units, sri_pct=:sri_pct, sri_total=:sri_total, 
+                            sq_old=:sq_old, sq_new=:sq_new, sq_units=:sq_units, sq_pct=:sq_pct, sq_total=:sq_total, excess_units=:excess,
+                            eb_kwh_old=:kwh_old, eb_kwh_new=:kwh_new
+                            WHERE id=:id"""
+                result = DB.execute(query, data_dict, commit=True)
             else:
                 query = f"""INSERT INTO public."tbl_EBbillR1" 
                             (billing_month, eb_kvah_old, eb_kvah_new, eb_charged_units, eb_pf, unit_rate, 
                             total_bill_amount, derived_fixed_charges, 
                             sri_old, sri_new, sri_units, sri_pct, sri_total, 
                             sq_old, sq_new, sq_units, sq_pct, sq_total, excess_units, eb_kwh_old, eb_kwh_new) 
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
-                result = DB.execute(query, data_tuple, commit=True)
+                            VALUES (:month, :kvah_old, :kvah_new, :eb_units, :eb_pf, :rate, :total_bill, :fixed_charges,
+                                    :sri_old, :sri_new, :sri_units, :sri_pct, :sri_total,
+                                    :sq_old, :sq_new, :sq_units, :sq_pct, :sq_total, :excess, :kwh_old, :kwh_new)"""
+                result = DB.execute(query, data_dict, commit=True)
 
             if result:
                 QMessageBox.information(self, "Success", "Record saved successfully!")
@@ -416,7 +412,7 @@ class ElectricityBillPage(QWidget):
         row_idx = item.row()
         record_id = int(self.history_table.item(row_idx, 0).text())
         
-        row = DB.fetchone(f'SELECT {ALL_COLS} FROM public."tbl_EBbillR1" WHERE id=?', (record_id,))
+        row = DB.fetchone(f'SELECT {ALL_COLS} FROM public."tbl_EBbillR1" WHERE id=:id', {"id": record_id})
         if row:
             self.clear_form()
             self.current_edit_id = record_id
@@ -447,7 +443,7 @@ class ElectricityBillPage(QWidget):
                 writer.writerow(ALL_COLS.split(", "))
                 for row in range(self.history_table.rowCount()):
                     record_id = self.history_table.item(row, 0).text()
-                    data = DB.fetchone(f'SELECT * FROM public."tbl_EBbillR1" WHERE id=?', (record_id,))
+                    data = DB.fetchone(f'SELECT * FROM public."tbl_EBbillR1" WHERE id=:id', {"id": record_id})
                     writer.writerow(data)
             QMessageBox.information(self, "Success", "Data exported successfully.")
         except Exception as e:
@@ -503,7 +499,7 @@ class ElectricityBillPage(QWidget):
 
     def preview_report(self):
         month = self.report_month_combo.currentText()
-        row = DB.fetchone(f'SELECT {ALL_COLS} FROM public."tbl_EBbillR1" WHERE billing_month=?', (month,))
+        row = DB.fetchone(f'SELECT {ALL_COLS} FROM public."tbl_EBbillR1" WHERE billing_month=:month', {"month": month})
         if not row: return
 
         text = f"""
@@ -532,7 +528,7 @@ FINAL INVOICE AMOUNT   : Rs {row[18]:.2f}
 
     def generate_html_report(self):
         month = self.report_month_combo.currentText()
-        row = DB.fetchone(f'SELECT {ALL_COLS} FROM public."tbl_EBbillR1" WHERE billing_month=?', (month,))
+        row = DB.fetchone(f'SELECT {ALL_COLS} FROM public."tbl_EBbillR1" WHERE billing_month=:month', {"month": month})
         if not row: return
 
         html = f"""

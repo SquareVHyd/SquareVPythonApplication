@@ -1,17 +1,17 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QComboBox, 
-    QLabel, QPushButton, QHeaderView, QMessageBox, QLineEdit, QDialog, QFormLayout, QStatusBar
+    QLabel, QPushButton, QHeaderView, QMessageBox, QLineEdit, QDialog, QFormLayout, QStatusBar, QApplication
 )
 from PySide6.QtCore import Qt, QTimer
-import pyodbc
+from sqlalchemy import text
+from app.config.database import get_session
+
 from app.ui.searchable_table import SearchableTable, NumericTableWidgetItem
 from app.ui.master.generic_crud_dialog import GenericCrudDialog # Import the new dialog
 
 class MasterDataPage(QWidget):
     def __init__(self):
         super().__init__()
-        # Using the PostgreSQL DSN consistent with the ZED Scorecard module
-        self.dsn = "PostgreSQL35W"
         self.current_table_name = None
         self.current_table_columns = [] # Stores (column_name, type_oid, display_type)
         self.primary_key_column = None
@@ -95,62 +95,44 @@ class MasterDataPage(QWidget):
         msg = f"Count: {count}"
         self.status_bar.showMessage(msg)
 
-    def get_db_connection(self):
-        try:
-            return pyodbc.connect(f"DSN={self.dsn};")
-        except Exception as e:
-            QMessageBox.critical(self, "Connection Error", f"Failed to connect to DB: {e}")
-            return None
-
     def refresh_table_list(self):
         """Fetch all table names from the public schema."""
-        conn = self.get_db_connection()
-        if not conn:
-            return
-
-        try:
-            cursor = conn.cursor()
-            # Query to get table names from PostgreSQL information schema
-            cursor.execute("""
-                SELECT table_name 
-                FROM information_schema.tables 
-                WHERE table_schema = 'public' 
-                AND table_name IN ('categories', 'metrics', 'sub_targets', 'tblCategory', 'tblMake', 'tblModSwg')
-                ORDER BY table_name
-            """)
-            tables = [row[0] for row in cursor.fetchall()]
-            
-            self.table_selector.blockSignals(True)
-            self.table_selector.clear()
-            self.table_selector.addItem("-- Select a Table --")
-            self.table_selector.addItems(tables)
-            self.table_selector.blockSignals(False)
-        except Exception as e:
-            QMessageBox.warning(self, "Error", f"Could not fetch table names: {e}")
-        finally:
-            conn.close()
+        query = text("""
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name IN ('categories', 'metrics', 'sub_targets', 'tblCategory', 'tblMake', 'tblModSwg')
+            ORDER BY table_name
+        """)
+        with get_session() as session:
+            try:
+                result = session.execute(query)
+                tables = [row[0] for row in result.fetchall()]
+                
+                self.table_selector.blockSignals(True)
+                self.table_selector.clear()
+                self.table_selector.addItem("-- Select a Table --")
+                self.table_selector.addItems(tables)
+                self.table_selector.blockSignals(False)
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"Could not fetch table names: {e}")
 
     def _get_table_primary_key(self, table_name):
         """Helper to find the primary key column of a table in PostgreSQL."""
-        conn = self.get_db_connection()
-        if not conn:
-            return None
-        try:
-            cursor = conn.cursor()
-            # Query pg_index and pg_attribute to find the PK for the specific table
-            cursor.execute(f"""
+        query = text(f"""
                 SELECT a.attname
                 FROM pg_index i
                 JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
                 WHERE i.indrelid = '"{table_name}"'::regclass AND i.indisprimary;
-            """)
-            result = cursor.fetchone()
-            return result[0] if result else None
-        except Exception as e:
-            print(f"Error fetching PK for {table_name}: {e}")
-            return None
-        finally:
-            conn.close()
+        """)
+        with get_session() as session:
+            try:
+                result = session.execute(query)
+                row = result.fetchone()
+                return row[0] if row else None
+            except Exception as e:
+                print(f"Error fetching PK for {table_name}: {e}")
+                return None
 
     def load_table_data(self):
         table_name = self.table_selector.currentText()
@@ -166,44 +148,37 @@ class MasterDataPage(QWidget):
         self.current_table_name = table_name
         self.primary_key_column = self._get_table_primary_key(table_name)
 
-        conn = self.get_db_connection()
-        if not conn:
-            return
+        with get_session() as session:
+            try:
+                # Fetch all rows from the selected table
+                result = session.execute(text(f'SELECT * FROM "{table_name}"'))
+                
+                # Store column names (mocking the structure for compatibility with display logic)
+                columns = list(result.keys())
+                self.current_table_columns = [[col] for col in columns]
+                rows = result.fetchall()
 
-        try:
-            cursor = conn.cursor()
-            # Fetch all rows from the selected table
-            cursor.execute(f'SELECT * FROM "{table_name}"')
-            
-            # Store column info: (name, type_code, display_size, internal_size, precision, scale, null_ok)
-            self.current_table_columns = [list(col) for col in cursor.description]
-            columns = [column[0] for column in self.current_table_columns]
-            rows = cursor.fetchall()
+                # Configure table structure
+                self.table.setColumnCount(len(columns))
+                self.table.setHorizontalHeaderLabels(columns)
+                self.table.setRowCount(len(rows))
 
-            # Configure table structure
-            self.table.setColumnCount(len(columns))
-            self.table.setHorizontalHeaderLabels(columns)
-            self.table.setRowCount(len(rows))
+                # Populate data grid
+                for r_idx, row in enumerate(rows):
+                    for c_idx, value in enumerate(row):
+                        text_val = str(value) if value is not None else ""
+                        item = NumericTableWidgetItem(text_val)
+                        # Set read-only flags for the master data viewer
+                        item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                        self.table.setItem(r_idx, c_idx, item)
 
-            # Populate data grid
-            for r_idx, row in enumerate(rows):
-                for c_idx, value in enumerate(row):
-                    text = str(value) if value is not None else ""
-                    item = NumericTableWidgetItem(text)
-                    # Set read-only flags for the master data viewer
-                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                    self.table.setItem(r_idx, c_idx, item)
-
-            self.table.resizeColumnsToContents()
-            if self.table.columnCount() > 0:
-                self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
-            
-            self._create_column_filters(columns)
-
-        except Exception as e:
-            QMessageBox.critical(self, "Query Error", f"Failed to load data from {table_name}:\n{e}")
-        finally:
-            conn.close()
+                self.table.resizeColumnsToContents()
+                if self.table.columnCount() > 0:
+                    self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+                
+                self._create_column_filters(columns)
+            except Exception as e:
+                QMessageBox.critical(self, "Query Error", f"Failed to load data from {table_name}:\n{e}")
 
     def _clear_column_filters(self):
         while self.filter_widgets_layout.count():
@@ -232,50 +207,47 @@ class MasterDataPage(QWidget):
         general_keyword = self.general_search_box.text().lower().strip()
         column_filters = {col: le.text().lower().strip() for col, le in self.filter_line_edits.items() if le.text().strip()}
 
-        conn = self.get_db_connection()
-        if not conn:
-            return
+        with get_session() as session:
+            try:
+                query_str = f'SELECT * FROM "{self.current_table_name}"'
+                where_clauses = []
+                params = {}
 
-        try:
-            cursor = conn.cursor()
-            query = f'SELECT * FROM "{self.current_table_name}"'
-            where_clauses = []
-            params = []
+                # Add individual column filters using named parameters
+                for i, (col_name, filter_text) in enumerate(column_filters.items()):
+                    p_name = f"col_{i}"
+                    where_clauses.append(f'CAST("{col_name}" AS TEXT) ILIKE :{p_name}')
+                    params[p_name] = f'%{filter_text}%'
+                
+                # Add general search filter (applies to all visible columns)
+                if general_keyword:
+                    clauses = []
+                    for i, col_info in enumerate(self.current_table_columns):
+                        col_name = col_info[0]
+                        p_name = f"gen_{i}"
+                        clauses.append(f'CAST("{col_name}" AS TEXT) ILIKE :{p_name}')
+                        params[p_name] = f'%{general_keyword}%'
+                    where_clauses.append(f"({' OR '.join(clauses)})")
 
-            # Add individual column filters
-            for col_name, filter_text in column_filters.items():
-                where_clauses.append(f'CAST("{col_name}" AS TEXT) ILIKE ?')
-                params.append(f'%{filter_text}%')
-            
-            # Add general search filter (applies to all visible columns)
-            if general_keyword:
-                general_search_cols = [col[0] for col in self.current_table_columns]
-                general_search_clause = " OR ".join([f'CAST("{c}" AS TEXT) ILIKE ?' for c in general_search_cols])
-                where_clauses.append(f'({general_search_clause})')
-                params.extend([f'%{general_keyword}%'] * len(general_search_cols))
+                if where_clauses:
+                    query_str += " WHERE " + " AND ".join(where_clauses)
+                
+                result = session.execute(text(query_str), params)
+                rows = result.fetchall()
 
-            if where_clauses:
-                query += " WHERE " + " AND ".join(where_clauses)
-            
-            cursor.execute(query, params)
-            rows = cursor.fetchall()
-
-            # Re-render table with filtered data
-            self.table.setSortingEnabled(False)
-            self.table.setRowCount(len(rows))
-            for r_idx, row in enumerate(rows):
-                for c_idx, value in enumerate(row):
-                    text = str(value) if value is not None else ""
-                    item = NumericTableWidgetItem(text)
-                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                    self.table.setItem(r_idx, c_idx, item)
-            self.table.setSortingEnabled(True)
-            self.table.resizeColumnsToContents()
-
-        except Exception as e:
-            QMessageBox.critical(self, "Filter Error", f"Failed to apply filters: {e}")
-        finally:
-            conn.close()
+                # Re-render table with filtered data
+                self.table.setSortingEnabled(False)
+                self.table.setRowCount(len(rows))
+                for r_idx, row in enumerate(rows):
+                    for c_idx, value in enumerate(row):
+                        text_val = str(value) if value is not None else ""
+                        item = NumericTableWidgetItem(text_val)
+                        item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                        self.table.setItem(r_idx, c_idx, item)
+                self.table.setSortingEnabled(True)
+                self.table.resizeColumnsToContents()
+            except Exception as e:
+                QMessageBox.critical(self, "Filter Error", f"Failed to apply filters: {e}")
 
     def _add_row(self):
         if not self.current_table_name:
@@ -294,22 +266,18 @@ class MasterDataPage(QWidget):
             if not data:
                 return
 
-            conn = self.get_db_connection()
-            if not conn: return
-            try:
-                columns = ", ".join([f'"{c}"' for c in data.keys()])
-                placeholders = ", ".join(["?"] * len(data))
-                query = f'INSERT INTO "{self.current_table_name}" ({columns}) VALUES ({placeholders})'
-                
-                cursor = conn.cursor()
-                cursor.execute(query, list(data.values()))
-                conn.commit()
-                QMessageBox.information(self, "Success", "Record added successfully.")
-                self.load_table_data() # Refresh table
-            except Exception as e:
-                QMessageBox.critical(self, "Database Error", f"Failed to add record: {e}")
-            finally:
-                conn.close()
+            with get_session() as session:
+                try:
+                    columns = ", ".join([f'"{c}"' for c in data.keys()])
+                    placeholders = ", ".join([f":{c}" for c in data.keys()])
+                    query = text(f'INSERT INTO "{self.current_table_name}" ({columns}) VALUES ({placeholders})')
+                    
+                    session.execute(query, data)
+                    session.commit()
+                    QMessageBox.information(self, "Success", "Record added successfully.")
+                    self.load_table_data() # Refresh table
+                except Exception as e:
+                    QMessageBox.critical(self, "Database Error", f"Failed to add record: {e}")
 
     def _edit_row(self):
         if not self.current_table_name:
@@ -340,23 +308,20 @@ class MasterDataPage(QWidget):
             
             pk_value = updated_data.pop(self.primary_key_column) # Get PK value and remove from data to update
             
-            conn = self.get_db_connection()
-            if not conn: return
-            try:
-                set_clauses = [f'"{c}" = ?' for c in updated_data.keys()]
-                query = f'UPDATE "{self.current_table_name}" SET {", ".join(set_clauses)} WHERE "{self.primary_key_column}" = ?'
-                
-                params = list(updated_data.values()) + [pk_value]
-                
-                cursor = conn.cursor()
-                cursor.execute(query, params)
-                conn.commit()
-                QMessageBox.information(self, "Success", "Record updated successfully.")
-                self.load_table_data() # Refresh table
-            except Exception as e:
-                QMessageBox.critical(self, "Database Error", f"Failed to update record: {e}")
-            finally:
-                conn.close()
+            with get_session() as session:
+                try:
+                    set_clauses = [f'"{c}" = :{c}' for c in updated_data.keys()]
+                    query = text(f'UPDATE "{self.current_table_name}" SET {", ".join(set_clauses)} WHERE "{self.primary_key_column}" = :pk_val')
+                    
+                    params = updated_data.copy()
+                    params["pk_val"] = pk_value
+                    
+                    session.execute(query, params)
+                    session.commit()
+                    QMessageBox.information(self, "Success", "Record updated successfully.")
+                    self.load_table_data() # Refresh table
+                except Exception as e:
+                    QMessageBox.critical(self, "Database Error", f"Failed to update record: {e}")
 
     def _delete_row(self):
         if not self.current_table_name:
@@ -394,22 +359,17 @@ class MasterDataPage(QWidget):
 
         confirm_msg = f"Are you sure you want to delete {len(pk_values_to_delete)} record(s) from '{self.current_table_name}'?"
         if QMessageBox.question(self, "Confirm Delete", confirm_msg, QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
-            conn = self.get_db_connection()
-            if not conn: return
-            try:
-                # Use IN clause for multiple deletions
-                placeholders = ", ".join(["?"] * len(pk_values_to_delete))
-                query = f'DELETE FROM "{self.current_table_name}" WHERE "{self.primary_key_column}" IN ({placeholders})'
-                
-                cursor = conn.cursor()
-                cursor.execute(query, pk_values_to_delete)
-                conn.commit()
-                QMessageBox.information(self, "Success", f"{len(pk_values_to_delete)} record(s) deleted successfully.")
-                self.load_table_data() # Refresh table
-            except Exception as e:
-                QMessageBox.critical(self, "Database Error", f"Failed to delete record(s): {e}")
-            finally:
-                conn.close()
+            with get_session() as session:
+                try:
+                    # PostgreSQL ANY operator is used to match against the array of primary keys
+                    query = text(f'DELETE FROM "{self.current_table_name}" WHERE "{self.primary_key_column}" = ANY(:ids)')
+                    
+                    session.execute(query, {"ids": pk_values_to_delete})
+                    session.commit()
+                    QMessageBox.information(self, "Success", f"{len(pk_values_to_delete)} record(s) deleted successfully.")
+                    self.load_table_data() # Refresh table
+                except Exception as e:
+                    QMessageBox.critical(self, "Database Error", f"Failed to delete record(s): {e}")
 
     def load_table_and_filter(self, table_name: str, column_name: str, filter_value: str):
         """

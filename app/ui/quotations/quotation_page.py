@@ -10,7 +10,8 @@ from PySide6.QtGui import QShortcut, QKeySequence, QAction
 from app.services.quotation_service import QuotationService
 from app.ui.quotations.quotation_form import QuotationForm
 from app.ui.quotations.quotation_ctc_dialog import QuotationCTCDialog
-from app.ui.quotations.module_items_viewer_dialog import ModuleItemsViewerDialog
+from app.ui.quotations.module_items.module_items_viewer_dialog import ModuleItemsViewerDialog
+from app.ui.quotations.quotation_preview_dialog import QuotationPreviewDialog
 from app.ui.searchable_table import SearchableTable, NumericTableWidgetItem
 from app.utils.worker_thread import Worker
 
@@ -210,6 +211,7 @@ class QuotationPage(QWidget):
         self._worker = None
 
     def _render(self, rows):
+        self.table.blockSignals(True)
         self.table.setSortingEnabled(False)
         self.table.setRowCount(len(rows))
         for r, row in enumerate(rows):
@@ -219,6 +221,7 @@ class QuotationPage(QWidget):
                 item.setFlags(item.flags() & ~Qt.ItemIsEditable)
                 self.table.setItem(r, c, item)
         self.table.setSortingEnabled(True)
+        self.table.blockSignals(False)
         self.table.resizeColumnsToContents()
 
     def _debounce_search(self):
@@ -259,6 +262,10 @@ class QuotationPage(QWidget):
         rev_action.triggered.connect(self._open_revisions)
         menu.addAction(rev_action)
 
+        preview_action = QAction(f"👁️ Preview Quotation: {project_name}", self)
+        preview_action.triggered.connect(lambda: self._open_quotation_preview(quote_id))
+        menu.addAction(preview_action)
+
         menu.addSeparator()
 
         view_cust_action = QAction(f"View Customer: {customer_name}", self)
@@ -276,6 +283,11 @@ class QuotationPage(QWidget):
 
     def _open_ctc_dialog(self, quote_id, project_name):
         dialog = QuotationCTCDialog(quote_id, project_name, self)
+        dialog.exec()
+
+    def _open_quotation_preview(self, quote_id):
+        """Opens the quotation preview dialog."""
+        dialog = QuotationPreviewDialog(quote_id, self)
         dialog.exec()
 
     def _view_customer_details(self, customer_id):

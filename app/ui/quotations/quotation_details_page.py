@@ -6,9 +6,10 @@ from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtCore import Qt
 from app.ui.quotations.quotation_page import QuotationPage
 from app.ui.quotations.panel_page import PanelPage
-from app.ui.quotations.panel_module_page import PanelModulePage
+from app.ui.quotations.modules.panel_module_page import PanelModulePage
 from app.ui.quotations.quotation_common_specs_page import QuotationCommonSpecsPage
-from app.ui.quotations.module_items_viewer_dialog import ModuleItemsViewerDialog # Import as a page
+from app.ui.quotations.module_items.module_items_viewer_dialog import ModuleItemsViewerDialog
+from app.ui.quotations.quotation_preview_dialog import QuotationPreviewDialog
 from app.ui.quotations.quotation_revision_page import QuotationRevisionPage
 
 class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
@@ -206,4 +207,12 @@ class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
             self.show_quotations()
 
     def show_preview(self):
-        pass
+        """Opens the quotation preview dialog for the selected quotation."""
+        selected = self.quotation_page.table.selectionModel().selectedRows()
+        if selected:
+            row = selected[0].row()
+            quote_id = int(self.quotation_page.table.item(row, 0).text())
+            dialog = QuotationPreviewDialog(quote_id, self)
+            dialog.exec()
+        else:
+            QMessageBox.warning(self, "Selection Required", "Please select a quotation to preview.")

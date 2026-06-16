@@ -187,8 +187,8 @@ class QuotationService:
         """
         query = text("""
                 SELECT 
-                    pm."ID", pm."PanelID", p."PanelName", pm."IngOg", pm."PanelModQty", 
-                    pm."ModuleTypeID", mc."Pnl_Module_Type", pm."ModPole", pm."ModKa", 
+                    pm."ID", pm."PanelID", p."PanelName", p."PanelQty", pm."IngOg", 
+                    pm."PanelModQty", pm."ModuleTypeID", mc."Pnl_Module_Type", pm."ModPole", pm."ModKa", 
                     pm."Release", pm."Protection", pm."Remark"
                 FROM public."tbl_PanelModules" pm
                 JOIN public."tbl_Panels" p ON pm."PanelID" = p."ID"
@@ -208,7 +208,7 @@ class QuotationService:
         """Fetches all modules for all panels belonging to a quotation."""
         query = text("""
                 SELECT 
-                    pm."ID", pm."PanelID", p."PanelName", pm."IngOg", 
+                    pm."ID", pm."PanelID", p."PanelName", p."PanelQty", pm."IngOg", 
                     pm."PanelModQty", pm."ModuleTypeID", mc."Pnl_Module_Type",
                     pm."ModPole", pm."ModKa", pm."Release", 
                     pm."Protection", pm."Remark"
@@ -225,6 +225,27 @@ class QuotationService:
             except Exception as e:
                 print(f"Error fetching quote modules: {e}")
                 return []
+
+    def get_quotation_by_id(self, quote_id):
+        """Fetches a single quotation record by its ID, including customer and contact names."""
+        query = text("""
+                SELECT 
+                    q."ID", q."CustomerId", c."CustomerName", q."DateOfRequest", q."Date_Quote", 
+                    q."QuoteRereceNo", q."QuoteSubject", q."QuoteProjectName",
+                    cc."CustomerContactName", q."PreparedBy", q."QuoteStatus"
+                FROM public."tbl_QuoteMain" q
+                LEFT JOIN public."tblCustomers" c ON q."CustomerId" = c."ID"
+                LEFT JOIN public."tblCustomerContacts" cc ON q."CustomerContactID" = cc."ID"
+                WHERE q."ID" = :quote_id
+        """)
+        with get_session() as session:
+            try:
+                result = session.execute(query, {"quote_id": quote_id})
+                row = result.fetchone()
+                return dict(row._mapping) if row else None
+            except Exception as e:
+                print(f"Error fetching quotation by ID: {e}")
+                return None
 
     def get_module_costs_lookup(self):
         """Fetches module types from tbl_PnlModuleType for selection."""
@@ -275,9 +296,7 @@ class QuotationService:
         """
         query = text("""
                 SELECT 
-                    "ID", "DriveDescription", "BOM", "UnitPanel", "Make", "Model",
-                    "LP", "%Discount", "AfterDiscountPrice", "TotalPrice",
-                    "TotalBOMQty", "Selection", "PNLName", "PNLQty"
+                    "ID", "DriveDescription", "BOM", "LP", "%Discount", "Selection"
                 FROM public."tbl_ModuleItems"
                 WHERE "ID" = :module_type_id
                 ORDER BY "DriveDescription"
@@ -289,6 +308,30 @@ class QuotationService:
             except Exception as e:
                 print(f"Error fetching module items: {e}")
                 return []
+
+    def create_module_item(self, module_type_id, drive_description, bom, lp, discount, selection, sequence_number=None):
+        """Inserts a new module item record."""
+        query = text("""
+                INSERT INTO public."tbl_ModuleItems" (
+                    "ID", "DriveDescription", "BOM", "LP", "%Discount", "Selection"
+                ) VALUES (:module_type_id, :drive_description, :bom, :lp, :discount, :selection)
+        """)
+        params = {
+            "module_type_id": module_type_id,
+            "drive_description": drive_description,
+            "bom": bom,
+            "lp": lp,
+            "discount": discount,
+            "selection": selection
+        }
+        with get_session() as session:
+            try:
+                session.execute(query, params)
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+
     def update_panel_module(self, pm_id, **kwargs):
         """Updates an existing panel module record."""
         query = text("""
@@ -309,6 +352,126 @@ class QuotationService:
             except Exception:
                 session.rollback()
                 raise
+
+    def update_module_item(self, old_module_type_id, old_drive_description, module_type_id, drive_description, bom, lp, discount, selection, sequence_number=None):
+        """Updates an existing module item record using its composite primary key.
+        Handles cases where DriveDescription (part of PK) might change by deleting old and inserting new.
+        """
+        with get_session() as session:
+            try:
+                if drive_description != old_drive_description:
+                    # If DriveDescription (part of PK) changes, delete old and insert new
+                    session.execute(text('DELETE FROM public."tbl_ModuleItems" WHERE "ID" = :old_mt_id AND "DriveDescription" = :old_desc'),
+                                    {"old_mt_id": old_module_type_id, "old_desc": old_drive_description})
+                    
+                    session.execute(text("""
+                        INSERT INTO public."tbl_ModuleItems" (
+                            "ID", "DriveDescription", "BOM", "LP", "%Discount", "Selection"
+                        ) VALUES (:module_type_id, :drive_description, :bom, :lp, :discount, :selection)
+                    """), {
+                        "module_type_id": module_type_id,
+                        "drive_description": drive_description,
+                        "bom": bom,
+                        "lp": lp,
+                        "discount": discount,
+                        "selection": selection
+                    })
+                else:
+                    # Only update non-PK fields
+                    query = text("""
+                            UPDATE public."tbl_ModuleItems" SET 
+                                "BOM" = :bom, "LP" = :lp, "%Discount" = :discount, "Selection" = :selection
+                            WHERE "ID" = :module_type_id AND "DriveDescription" = :drive_description
+                    """)
+                    params = {
+                        "module_type_id": module_type_id,
+                        "drive_description": drive_description,
+                        "bom": bom,
+                        "lp": lp,
+                        "discount": discount,
+                        "selection": selection
+                    }
+                    session.execute(query, params)
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+
+    def delete_module_item(self, module_type_id, drive_description):
+        """Deletes a module item record by its composite primary key."""
+        with get_session() as session:
+            try:
+                session.execute(text('DELETE FROM public."tbl_ModuleItems" WHERE "ID" = :mt_id AND "DriveDescription" = :desc'),
+                                {"mt_id": module_type_id, "desc": drive_description})
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+
+    def get_vw_modules_full_makes(self):
+        """Fetches distinct makes from vwModulesFull."""
+        query = text('SELECT DISTINCT "Make" FROM public."vwmodulesfull" WHERE "Make" IS NOT NULL ORDER BY "Make"')
+        with get_session() as session:
+            return [row[0] for row in session.execute(query).fetchall()]
+
+    def get_vw_modules_full_types(self, make):
+        """Fetches distinct module types for a specific make."""
+        query = text('SELECT DISTINCT "ModuleType" FROM public."vwmodulesfull" WHERE "Make" = :make ORDER BY "ModuleType"')
+        with get_session() as session:
+            return [row[0] for row in session.execute(query, {"make": make}).fetchall()]
+
+    def get_vw_modules_full_items(self, make, module_type):
+        """Fetches all items for a specific make and module type."""
+        query = text('SELECT * FROM public."vwmodulesfull" WHERE "Make" = :make AND "ModuleType" = :mt ORDER BY "SEQNo"')
+        with get_session() as session:
+            return [dict(row._mapping) for row in session.execute(query, {"make": make, "mt": module_type}).fetchall()]
+
+    def bulk_add_module_items_from_vw(self, items, target_mt_id):
+        """Handles logic: Resolve ID -> Price Lookup -> Dup Check -> Insert."""
+        added, skipped = 0, 0
+        with get_session() as session:
+            for item in items:
+                desc = item.get("ItemDescription")
+                qty_from_mod = item.get("Qty")
+
+                # 1. Duplicate Prevention for this specific Module Type Instance
+                exists = session.execute(
+                    text('SELECT 1 FROM public."tbl_ModuleItems" WHERE "ID" = :id AND "DriveDescription" = :desc'),
+                    {"id": target_mt_id, "desc": desc}
+                ).scalar()
+                if exists:
+                    skipped += 1; continue
+
+                # 2. Price List Lookup from vwPriceList View
+                price = session.execute(
+                    text('SELECT "ListPrice", "DiscountPercent", "UsedQty" FROM public."vwPriceList" WHERE "ItemDescription" = :desc'),
+                    {"desc": desc}
+                ).fetchone()
+                
+                lp = float(price[0]) if price and price[0] else 0.0
+                disc = float(price[1]) if price and price[1] else 0.0
+                
+                # Logic: Use Qty from the template (vwmodulesfull) if available, 
+                # else fall back to the Price List UsedQty, else default to 1.0
+                if qty_from_mod is not None:
+                    bom = float(qty_from_mod)
+                elif price and price[2] is not None:
+                    bom = float(price[2])
+                else:
+                    bom = 1.0
+
+                # 3. Insert into tbl_ModuleItems
+                try:
+                    session.execute(
+                        text("""INSERT INTO public."tbl_ModuleItems" ("ID", "DriveDescription", "BOM", "LP", "%Discount", "Selection") 
+                                VALUES (:id, :desc, :bom, :lp, :disc, 'Selected')"""),
+                        {"id": target_mt_id, "desc": desc, "bom": bom, "lp": lp, "disc": disc}
+                    )
+                    added += 1
+                except Exception:
+                    skipped += 1
+            session.commit()
+        return added, skipped
 
     def update_panel_module_field(self, pm_id, column_name, new_value):
         """Updates a single field for a panel module record."""

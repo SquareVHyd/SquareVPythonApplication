@@ -253,9 +253,10 @@ class ModuleViewPage(QWidget):
         for r, row in enumerate(rows):
             # row indexes based on new query: 0:ModuleTypeID, 1:ModuleType, 2:ModuleMake, 3:SWG
             for t_col in range(len(row)): # Iterate through all columns returned by the new query
-                item = NumericTableWidgetItem(str(row[t_col] if row[t_col] is not None else ""))
-                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                self.table.setItem(r, t_col, item)
+                self.table.setItem(
+                    r, t_col,
+                    NumericTableWidgetItem(str(row[t_col] if row[t_col] is not None else ""))
+                )
         self.table.setSortingEnabled(True)
         self.table.resizeColumnsToContents()
         self._restore_state()

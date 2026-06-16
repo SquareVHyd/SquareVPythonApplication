@@ -280,7 +280,7 @@ class PriceListPage(QWidget):
             return
 
         self._worker = Worker(
-            self.service.get_all_price_items
+            self.service.get_pricelist_view_data
         )
         self._worker.result.connect(self._loaded)
         self._worker.error.connect(self._on_load_error)

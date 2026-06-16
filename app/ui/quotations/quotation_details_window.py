@@ -6,9 +6,9 @@ from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtCore import Qt
 from app.ui.quotations.quotation_page import QuotationPage
 from app.ui.quotations.panel_page import PanelPage
-from app.ui.quotations.panel_module_page import PanelModulePage
+from app.ui.quotations.modules.panel_module_page import PanelModulePage
 from app.ui.quotations.quotation_common_specs_page import QuotationCommonSpecsPage
-from app.ui.quotations.module_items_viewer_dialog import ModuleItemsViewerDialog # Import as a page
+from app.ui.quotations.module_items.module_items_viewer_dialog import ModuleItemsViewerDialog
 from app.ui.quotations.quotation_revision_page import QuotationRevisionPage
 
 class QuotationDetailsWindow(QMainWindow):

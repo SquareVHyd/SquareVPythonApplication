@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QStyledItemDelegate, QComboBox
+from PySide6.QtWidgets import QStyledItemDelegate, QComboBox, QSpinBox, QDoubleSpinBox
 from PySide6.QtCore import Qt, QEvent, QTimer
 
 class ComboBoxDelegate(QStyledItemDelegate):
@@ -44,3 +44,48 @@ class ComboBoxDelegate(QStyledItemDelegate):
             self.closeEditor.emit(editor, QStyledItemDelegate.NoHint)
             return True
         return super().eventFilter(editor, event)
+
+class SpinBoxDelegate(QStyledItemDelegate):
+    def __init__(self, parent=None, min_val=1, max_val=999999):
+        super().__init__(parent)
+        self.min_val = min_val
+        self.max_val = max_val
+
+    def createEditor(self, parent, option, index):
+        editor = QSpinBox(parent)
+        editor.setFrame(False)
+        editor.setMinimum(self.min_val)
+        editor.setMaximum(self.max_val)
+        return editor
+
+    def setEditorData(self, editor, index):
+        val = index.model().data(index, Qt.EditRole)
+        try: editor.setValue(int(float(str(val).strip() or self.min_val)))
+        except: editor.setValue(self.min_val)
+
+    def setModelData(self, editor, model, index):
+        model.setData(index, str(editor.value()), Qt.EditRole)
+
+class DoubleSpinBoxDelegate(QStyledItemDelegate):
+    def __init__(self, parent=None, min_val=1.0, max_val=9999999.0, decimals=2):
+        super().__init__(parent)
+        self.min_val = min_val
+        self.max_val = max_val
+        self.decimals = decimals
+
+    def createEditor(self, parent, option, index):
+        editor = QDoubleSpinBox(parent)
+        editor.setFrame(False)
+        editor.setMinimum(self.min_val)
+        editor.setMaximum(self.max_val)
+        editor.setDecimals(self.decimals)
+        return editor
+
+    def setEditorData(self, editor, index):
+        val = index.model().data(index, Qt.EditRole)
+        clean = str(val).replace('₹', '').replace(',', '').replace('%', '').strip()
+        try: editor.setValue(float(clean or self.min_val))
+        except: editor.setValue(self.min_val)
+
+    def setModelData(self, editor, model, index):
+        model.setData(index, str(round(editor.value(), self.decimals)), Qt.EditRole)

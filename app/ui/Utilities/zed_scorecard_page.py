@@ -22,9 +22,6 @@ from reportlab.pdfgen import canvas as rl_canvas
 from reportlab.lib.utils import ImageReader
 from reportlab.lib import colors as rl_colors
 
-# Using the DSN provided in the request
-DSN_NAME = "PostgreSQLLH"
-
 # Path to the logo used inside the drawn header
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "Images", "SQV_Header.png")
 
@@ -152,34 +149,6 @@ def _draw_logo_fallback(c, x, y, w, h):
     p.lineTo(cx + s*0.35, cy + s*0.1); p.lineTo(cx, cy - s*0.3); p.lineTo(cx - s*0.35, cy + s*0.1)
     p.close(); c.drawPath(p, fill=1, stroke=0)
 # ─────────────────────────────────────────────────────────────────────────────
-
-class DB:
-    @staticmethod
-    def execute(sql, params=None, fetch=False, commit=False):
-        with get_session() as session:
-            try:
-                result = session.execute(text(sql), params or {})
-                if fetch:
-                    return [list(row) for row in result.fetchall()]
-                if commit:
-                    session.commit()
-                return True 
-            except Exception as exc:
-                print(f"Database Error: {exc}")
-                if commit: session.rollback()
-                return False 
-
-    @staticmethod
-    def fetchone(sql, params=None):
-        with get_session() as session:
-            try:
-                result = session.execute(text(sql), params or {})
-                row = result.fetchone()
-                return list(row) if row else None
-            except Exception as exc:
-                print(f"Fetch Failed: {exc}")
-                return None
-
 
 class ZEDScoreCardPage(QWidget):
     """PySide6 implementation of the ZED ScoreCard management tool."""
@@ -342,24 +311,29 @@ class ParameterWorkspaceWidget(QWidget):
         self.btn_cancel.hide()
 
     def refresh_kpis(self):
-        query = """
+        query = text("""
             SELECT m.kpi_name FROM metrics m 
             JOIN categories c ON m.category_id = c.id 
             WHERE c.name = :name ORDER BY m.kpi_name
-        """
-        rows = DB.execute(query, {"name": self.category_name}, fetch=True)
-        kpi_list = [row[0] for row in rows]
-        self.cb_metric.clear()
-        self.cb_metric.addItems(kpi_list)
-        self.cb_filter_kpi.clear()
-        self.cb_filter_kpi.addItem("- All Parameters -")
-        self.cb_filter_kpi.addItems(kpi_list)
+        """)
+        with get_session() as session:
+            result = session.execute(query, {"name": self.category_name})
+            kpi_list = [row[0] for row in result.fetchall()]
+            self.cb_metric.clear()
+            self.cb_metric.addItems(kpi_list)
+            self.cb_filter_kpi.clear()
+            self.cb_filter_kpi.addItem("- All Parameters -")
+            self.cb_filter_kpi.addItems(kpi_list)
 
     def on_form_kpi_selected(self, kpi):
         if not kpi: return
-        query = "SELECT DISTINCT s.sub_name FROM sub_targets s JOIN metrics m ON s.metric_id = m.id WHERE m.kpi_name = :kpi ORDER BY s.sub_name"
-        rows = DB.execute(query, {"kpi": kpi}, fetch=True)
-        zones = [row[0] for row in rows]
+        query = text("""
+            SELECT DISTINCT s.sub_name FROM sub_targets s 
+            JOIN metrics m ON s.metric_id = m.id WHERE m.kpi_name = :kpi ORDER BY s.sub_name
+        """)
+        with get_session() as session:
+            result = session.execute(query, {"kpi": kpi})
+            zones = [row[0] for row in result.fetchall()]
         self.cb_sub.clear()
         self.cb_sub.addItems(zones)
 
@@ -405,18 +379,20 @@ class ParameterWorkspaceWidget(QWidget):
                 params["fzone"] = fzone
 
         query += " ORDER BY r.record_date ASC"
-        rows = DB.execute(query, params, fetch=True)
-        
-        self.table.setRowCount(len(rows))
-        chart_data = []
-        for i, row in enumerate(rows):
-            for j, val in enumerate(row):
-                item = QTableWidgetItem(str(val))
-                if j == 3 and val:
-                    item.setText(val.strftime("%b-%y"))
-                self.table.setItem(i, j, item)
-            chart_data.append((row[3].strftime("%b-%y"), row[4]))
-        
+        with get_session() as session:
+            result = session.execute(text(query), params)
+            rows = result.fetchall()
+            
+            self.table.setRowCount(len(rows))
+            chart_data = []
+            for i, row in enumerate(rows):
+                for j, val in enumerate(row):
+                    item = QTableWidgetItem(str(val))
+                    if j == 3 and val:
+                        item.setText(val.strftime("%b-%y"))
+                    self.table.setItem(i, j, item)
+                chart_data.append((row[3].strftime("%b-%y"), row[4]))
+            
         self.update_chart(chart_data, fkpi, fzone)
 
     def update_chart(self, data, kpi, zone):
@@ -592,18 +568,23 @@ class ParameterWorkspaceWidget(QWidget):
         if row < 0: return
         if QMessageBox.question(self, "Delete", "Remove this record?") == QMessageBox.Yes:
             record_id = int(self.table.item(row, 0).text())
-            DB.execute("DELETE FROM monthly_records WHERE id = :id", {"id": record_id}, commit=True)
-            self.refresh_grid()
+            with get_session() as session:
+                try:
+                    session.execute(text("DELETE FROM monthly_records WHERE id = :id"), {"id": record_id})
+                    session.commit()
+                    self.refresh_grid()
+                except Exception as e:
+                    QMessageBox.critical(self, "Database Error", str(e))
 
     def export_to_csv(self):
         path, _ = QFileDialog.getSaveFileName(self, "Export Report", "", "CSV Files (*.csv)")
         if not path: return
         try:
-            with open(path, 'w', newline='') as f:
+            with open(path, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
                 writer.writerow(["ID", "KPI", "Zone", "Month", "Value", "Remarks"])
                 for row in range(self.table.rowCount()):
                     writer.writerow([self.table.item(row, col).text() for col in range(6)])
             QMessageBox.information(self, "Success", "Export complete.")
         except Exception as e:
-            QMessageBox.critical(self, "Error", str(e))
+            QMessageBox.critical(self, "Export Error", str(e))

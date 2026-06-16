@@ -31,6 +31,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("SQV Engineering")
         # Track the utilities window instance to prevent garbage collection
         self.utilities_window = None
+        self.setMinimumSize(1024, 768) # Set a reasonable minimum size for the main window
         self.tools_window = None
         
         # Restore window geometry from last session
@@ -136,6 +137,7 @@ class MainWindow(QMainWindow):
 
         self.main_splitter.addWidget(sidebar_frame)
         self.main_splitter.addWidget(self.pages)
+        self.main_splitter.setChildrenCollapsible(False) # Ensure both sides of the splitter remain visible and resizable
         self.main_splitter.setStretchFactor(1, 1)
 
         self.setCentralWidget(self.main_splitter)

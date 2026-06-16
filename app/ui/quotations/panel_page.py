@@ -424,6 +424,7 @@ class PanelPage(QWidget):
         self._worker = None
 
     def _render(self, rows):
+        self.table.blockSignals(True)
         self.table.setSortingEnabled(False)
         self.table.setRowCount(len(rows))
         # Columns 2 through 13 correspond to the editable data fields in tbl_Panels
@@ -439,6 +440,7 @@ class PanelPage(QWidget):
                     item.setFlags(item.flags() & ~Qt.ItemIsEditable)
                 self.table.setItem(r, c, item)
         self.table.setSortingEnabled(True)
+        self.table.blockSignals(False)
         self.table.resizeColumnsToContents()
 
     def _debounce_search(self):

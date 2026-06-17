@@ -296,10 +296,13 @@ class QuotationService:
         """
         query = text("""
                 SELECT 
-                    "ID", "DriveDescription", "BOM", "LP", "%Discount", "Selection"
-                FROM public."tbl_ModuleItems"
-                WHERE "ID" = :module_type_id
-                ORDER BY "DriveDescription"
+                    mi."ID", mi."DriveDescription", mi."BOM", mi."LP", mi."%Discount", mi."Selection",
+                    pl."Make",
+                    (CAST(mi."BOM" AS NUMERIC) * CAST(mi."LP" AS NUMERIC) * (1 - CAST(mi."%Discount" AS NUMERIC))) as "Amount"
+                FROM public."tbl_ModuleItems" mi
+                LEFT JOIN public."vwPriceList" pl ON mi."DriveDescription" = pl."ItemDescription"
+                WHERE mi."ID" = :module_type_id
+                ORDER BY mi."DriveDescription"
         """)
         with get_session() as session:
             try:

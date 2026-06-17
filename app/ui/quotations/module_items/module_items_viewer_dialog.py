@@ -77,6 +77,7 @@ class ModuleItemsViewerDialog(QWidget):
 
     def _load_panels(self):
         self.panel_combo.blockSignals(True); self.panel_combo.clear()
+        self.panel_combo.addItem("--- All Panels (Summary) ---", None)
         self._panels_lookup = self.service.get_panels_by_quote(self.quote_id)
         for p in self._panels_lookup: self.panel_combo.addItem(f"{p[4]} (Qty: {p[5]})", p[0])
         if self.initial_panel_id:
@@ -88,7 +89,9 @@ class ModuleItemsViewerDialog(QWidget):
     def _on_panel_changed(self):
         panel_id = self.panel_combo.currentData()
         self.module_combo.blockSignals(True); self.module_combo.clear()
+        self._panel_modules_lookup = []
         if panel_id is not None:
+            self.module_combo.addItem("--- All Modules (Summary) ---", None)
             self._panel_modules_lookup = self.service.get_panel_modules_by_panel_id(panel_id)
             for pm in self._panel_modules_lookup: self.module_combo.addItem(f"{pm[7]} - {pm[4]}", pm[0])
             if self.initial_pm_id:
@@ -98,26 +101,69 @@ class ModuleItemsViewerDialog(QWidget):
         self.module_combo.blockSignals(False); self._on_module_changed()
 
     def _on_module_changed(self):
-        pm_id = self.module_combo.currentData()
-        if pm_id is None: self.table.setRowCount(0); self.status_bar.clearMessage(); return
         self._load_items_async()
 
     def _load_items_async(self):
         if self._worker: return
+        panel_id = self.panel_combo.currentData()
         pm_id = self.module_combo.currentData()
-        selected_pm = next((pm for pm in self._panel_modules_lookup if pm[0] == pm_id), None)
-        if not selected_pm: return
-        module_type_id, panel_qty, mod_qty = selected_pm[6], int(selected_pm[3] or 1), int(selected_pm[5] or 1)
-        panel_name = self.panel_combo.currentText().split(" (Qty:")[0]
+
+        # Update button states: disable CRUD for summary view
+        is_summary = (pm_id is None)
+        self.add_btn.setEnabled(not is_summary)
+        self.add_from_mod_btn.setEnabled(not is_summary)
+        self.edit_btn.setEnabled(not is_summary)
+        self.delete_btn.setEnabled(not is_summary)
+
         def fetch_data():
-            sql = text("""SELECT mi."ID", mi."DriveDescription", mi."BOM", mi."LP", mi."%Discount", mi."Selection", pl."Make", pl."Model" FROM public."tbl_ModuleItems" mi LEFT JOIN public."vwPriceList" pl ON mi."DriveDescription" = pl."ItemDescription" WHERE mi."ID" = :mt_id""")
-            with get_session() as session: return session.execute(sql, {"mt_id": module_type_id}).fetchall(), panel_qty, mod_qty, panel_name, module_type_id
+            with get_session() as session:
+                if pm_id is not None:
+                    # Single Module Logic
+                    selected_pm = next((pm for pm in self._panel_modules_lookup if pm[0] == pm_id), None)
+                    if not selected_pm: return [], 1, 1, "", 0
+                    module_type_id, pnl_qty, mod_qty = selected_pm[6], int(selected_pm[3] or 1), int(selected_pm[5] or 1)
+                    pnl_name = self.panel_combo.currentText().split(" (Qty:")[0]
+                    sql = text("""SELECT mi."ID", mi."DriveDescription", mi."BOM", mi."LP", mi."%Discount", mi."Selection", pl."Make", pl."Model" FROM public."tbl_ModuleItems" mi LEFT JOIN public."vwPriceList" pl ON mi."DriveDescription" = pl."ItemDescription" WHERE mi."ID" = :mt_id""")
+                    rows = session.execute(sql, {"mt_id": module_type_id}).fetchall()
+                    return rows, pnl_qty, mod_qty, pnl_name, module_type_id
+                else:
+                    # Aggregated Summary Logic (Combine items across all modules in quote or panel)
+                    where_clause = 'p."QuoteID" = :tid' if panel_id is None else 'p."ID" = :tid'
+                    sql = text(f"""
+                        SELECT 
+                            0 as "ID",
+                            mi."DriveDescription",
+                            SUM(
+                                COALESCE(p."PanelQty", 1) * 
+                                CASE 
+                                    WHEN mi."BOM" IS NOT NULL AND mi."BOM" <> 0 THEN mi."BOM" 
+                                    ELSE COALESCE(pm."PanelModQty", 1) 
+                                END
+                            ) as "TotalBOM",
+                            MAX(mi."LP") as "LP",
+                            MAX(mi."%Discount") as "Discount",
+                            MAX(mi."Selection") as "Selection",
+                            MAX(pl."Make") as "Make",
+                            MAX(pl."Model") as "Model"
+                        FROM public."tbl_Panels" p
+                        JOIN public."tbl_PanelModules" pm ON p."ID" = pm."PanelID"
+                        JOIN public."tbl_ModuleItems" mi ON pm."ModuleTypeID" = mi."ID"
+                        LEFT JOIN public."vwPriceList" pl ON mi."DriveDescription" = pl."ItemDescription"
+                        WHERE {where_clause}
+                        GROUP BY mi."DriveDescription"
+                        ORDER BY mi."DriveDescription"
+                    """)
+                    rows = session.execute(sql, {"tid": self.quote_id if panel_id is None else panel_id}).fetchall()
+                    return rows, 1, 1, "Combined Summary", 0
+
         self._worker = Worker(fetch_data)
         self._worker.result.connect(self._items_loaded); self._worker.error.connect(self._on_load_error); self._worker.start()
 
     def _items_loaded(self, result):
         rows, pnl_qty, mod_qty, pnl_name, mt_id_for_status = result
+        is_summary = (mt_id_for_status == 0)
         self.table.blockSignals(True); self._cache = []; self.table.setSortingEnabled(False); self.table.setRowCount(len(rows))
+        self.table.setColumnHidden(0, is_summary)
         for r, row in enumerate(rows):
             mt_id, desc, bom, lp, disc, sel, make, model = row
             # Default to the module's quantity (PanelModQty) if the item's BOM is not specified or zero
@@ -128,20 +174,25 @@ class ModuleItemsViewerDialog(QWidget):
             self._cache.append(row)
             for c, val in enumerate(data):
                 item = NumericTableWidgetItem(str(val))
-                if c in {2, 3, 4, 5}: item.setFlags(item.flags() | Qt.ItemIsEditable)
+                if (not is_summary and c in {2, 3, 4, 5}) or (is_summary and c in {3, 4}): 
+                    item.setFlags(item.flags() | Qt.ItemIsEditable)
                 else: item.setFlags(item.flags() & ~Qt.ItemIsEditable)
                 if c == 0: item.setData(Qt.UserRole, (mt_id, desc))
                 self.table.setItem(r, c, item)
-        self.table.setSortingEnabled(True); self.table.resizeColumnsToContents(); self.table.blockSignals(False); self.status_bar.showMessage(f"Loaded {len(rows)} items for module type ID: {mt_id_for_status}"); self._worker = None
+        self.table.setSortingEnabled(True); self.table.resizeColumnsToContents(); self.table.blockSignals(False)
+        msg = f"Loaded {len(rows)} unique items (Summary view)" if is_summary else f"Loaded {len(rows)} items for module type ID: {mt_id_for_status}"
+        self.status_bar.showMessage(msg)
+        self._worker = None
 
     def _handle_item_changed(self, item):
         col = item.column()
-        if col not in [2, 3, 4, 5]: return
+        if col not in {2, 3, 4, 5}: return
         self.table.blockSignals(True)
         try:
             row = item.row()
             pk_data = self.table.item(row, 0).data(Qt.UserRole)
             if not pk_data: return
+            is_summary = (pk_data[0] == 0)
             def safe_num(text, default=1.0):
                 try: return float(text.replace('₹', '').replace(',', '').replace('%', '').strip() or default)
                 except: return default
@@ -151,7 +202,31 @@ class ModuleItemsViewerDialog(QWidget):
             disc = safe_num(self.table.item(row, 4).text(), 0.0) / 100.0
             db_sel = "Selected" if self.table.item(row, 5).text() == "✅" else "Not Selected"
             
-            self.service.update_module_item(pk_data[0], pk_data[1], pk_data[0], pk_data[1], bom, lp, disc, db_sel)
+            if is_summary:
+                # Bulk Update across the current scope (Quote or Panel)
+                panel_id = self.panel_combo.currentData()
+                where_clause = 'p."QuoteID" = :tid' if panel_id is None else 'p."ID" = :tid'
+                sql = text(f"""
+                    UPDATE public."tbl_ModuleItems"
+                    SET "LP" = :lp, "%Discount" = :disc
+                    WHERE "DriveDescription" = :desc
+                    AND "ID" IN (
+                        SELECT pm."ModuleTypeID"
+                        FROM public."tbl_PanelModules" pm
+                        JOIN public."tbl_Panels" p ON pm."PanelID" = p."ID"
+                        WHERE {where_clause}
+                    )
+                """)
+                with get_session() as session:
+                    session.execute(sql, {
+                        "lp": lp,
+                        "disc": disc,
+                        "desc": pk_data[1], # DriveDescription
+                        "tid": self.quote_id if panel_id is None else panel_id
+                    })
+                    session.commit()
+            else:
+                self.service.update_module_item(pk_data[0], pk_data[1], pk_data[0], pk_data[1], bom, lp, disc, db_sel)
         except Exception as e: print(f"Error during inline update: {e}")
         finally: self.table.blockSignals(False)
 

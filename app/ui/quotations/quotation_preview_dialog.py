@@ -98,7 +98,12 @@ class QuotationPreviewDialog(QDialog):
                         items_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch) # Stretch description
 
                         for r, item_data in enumerate(items):
-                            _, desc, bom, lp, disc, _ = item_data # Assuming structure from get_module_items_by_module_type_id
+                            # Safely extract indices as the service now returns more columns
+                            desc = item_data[1]
+                            bom = item_data[2]
+                            lp = item_data[3]
+                            disc = item_data[4]
+                            
                             items_table.setItem(r, 0, QTableWidgetItem(str(desc)))
                             items_table.setItem(r, 1, QTableWidgetItem(str(bom)))
                             items_table.setItem(r, 2, QTableWidgetItem(f"{lp:,.2f}"))

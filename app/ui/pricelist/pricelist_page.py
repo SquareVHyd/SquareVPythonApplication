@@ -13,12 +13,16 @@ from PySide6.QtWidgets import (
     QDialog,
     QAbstractItemView,
     QComboBox,
+    QTextEdit,
+    QDialogButtonBox,
     QStatusBar
 )
 
 from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtCore import Qt, QTimer
 
+from sqlalchemy import text
+from app.config.database import get_session
 from app.services.price_list_service import PriceListService
 from app.ui.pricelist.pricelist_form import PriceListForm
 from app.ui.searchable_table import (
@@ -27,6 +31,35 @@ from app.ui.searchable_table import (
 )
 from app.utils.worker_thread import Worker
 from app.config.ui_state import UIStateManager
+
+
+class BulkPriceUpdateDialog(QDialog):
+    """Dialog for entering multiple models and prices for bulk update."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Bulk Price Update")
+        self.setMinimumWidth(500)
+        layout = QVBoxLayout(self)
+
+        layout.addWidget(QLabel("Models (space separated values):"))
+        self.models_input = QTextEdit()
+        self.models_input.setPlaceholderText("Model1 Model2 Model3 ...")
+        layout.addWidget(self.models_input)
+
+        layout.addWidget(QLabel("List Prices (space separated values):"))
+        self.prices_input = QTextEdit()
+        self.prices_input.setPlaceholderText("100.00 150.50 200.00 ...")
+        layout.addWidget(self.prices_input)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def get_data(self):
+        models = self.models_input.toPlainText().strip().split()
+        prices = self.prices_input.toPlainText().strip().split()
+        return models, prices
 
 
 class PriceListPage(QWidget):
@@ -78,8 +111,11 @@ class PriceListPage(QWidget):
         self.edit_btn.setToolTip("(Ctrl+E)")
         self.delete_btn = QPushButton("🗑️ Delete")
         self.delete_btn.setToolTip("(Delete)")
+        self.bulk_update_btn = QPushButton("📦 Bulk Update")
+        self.bulk_update_btn.setToolTip("Update prices by list of models")
         self.export_excel_btn = QPushButton("📊 Export Excel")
         self.export_excel_btn.setToolTip("(Ctrl+Shift+E)")
+        
 
         self.refresh_btn.clicked.connect(
             self.refresh_table
@@ -99,6 +135,10 @@ class PriceListPage(QWidget):
 
         self.export_excel_btn.clicked.connect(
             self.export_to_excel
+        )
+
+        self.bulk_update_btn.clicked.connect(
+            self.bulk_update_prices
         )
 
         # Row for individual filters and Clear All button
@@ -138,7 +178,9 @@ class PriceListPage(QWidget):
         header.addWidget(self.add_btn)
         header.addWidget(self.edit_btn)
         header.addWidget(self.delete_btn)
+        header.addWidget(self.bulk_update_btn)
         header.addWidget(self.export_excel_btn)
+        
 
         layout.addLayout(header)
         layout.addLayout(filter_row)
@@ -280,7 +322,7 @@ class PriceListPage(QWidget):
             return
 
         self._worker = Worker(
-            self.service.get_pricelist_view_data
+            self.service.get_all_price_items
         )
         self._worker.result.connect(self._loaded)
         self._worker.error.connect(self._on_load_error)
@@ -506,6 +548,39 @@ class PriceListPage(QWidget):
             QMessageBox.information(self, "Success", f"Data exported successfully to:\n{export_path}")
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Failed to export to Excel: {e}")
+
+    def bulk_update_prices(self):
+        """Handles bulk price updates from a list of models and prices."""
+        dialog = BulkPriceUpdateDialog(self)
+        if dialog.exec() == QDialog.Accepted:
+            models, prices = dialog.get_data()
+            
+            if not models or not prices:
+                QMessageBox.warning(self, "Validation", "Both model and price lists are required.")
+                return
+
+            if len(models) != len(prices):
+                QMessageBox.warning(self, "Validation Error", 
+                                  f"Count mismatch: {len(models)} models provided for {len(prices)} prices.")
+                return
+
+            try:
+                with get_session() as session:
+                    for m, p in zip(models, prices):
+                        # Run a loop to update prices by model query
+                        query = text('UPDATE "tblPriceList" SET "ListPrice" = :lp WHERE "Model" = :model')
+                        session.execute(query, {
+                            "lp": float(p),
+                            "model": m
+                        })
+                    session.commit()
+                
+                QMessageBox.information(self, "Success", f"Successfully updated {len(models)} items.")
+                self.refresh_table()
+            except ValueError:
+                QMessageBox.critical(self, "Input Error", "One or more prices are not valid numbers.")
+            except Exception as e:
+                QMessageBox.critical(self, "Database Error", f"Failed to perform bulk update: {e}")
 
     def _handle_item_changed(self, item):
         # Block signals to prevent re-triggering this slot when we update other cells programmatically

@@ -9,6 +9,7 @@ from app.ui.quotations.panel_page import PanelPage
 from app.ui.quotations.modules.panel_module_page import PanelModulePage
 from app.ui.quotations.quotation_common_specs_page import QuotationCommonSpecsPage
 from app.ui.quotations.module_items.module_items_viewer_dialog import ModuleItemsViewerDialog
+from app.ui.quotations.quotation_preview import QuotationPreviewPage
 from app.ui.quotations.quotation_revision_page import QuotationRevisionPage
 
 class QuotationDetailsWindow(QMainWindow):
@@ -56,9 +57,9 @@ class QuotationDetailsWindow(QMainWindow):
         self.revision_btn.setToolTip("Manage quotation revisions")
         self.revision_btn.setEnabled(False)
 
-        self.preview_btn = QPushButton("👁️ Preview")
+        self.preview_btn = QPushButton("📑 Quotation Preview")
         self.preview_btn.clicked.connect(self.show_preview)
-        self.preview_btn.setToolTip("Preview quotation documents")
+        self.preview_btn.setToolTip("View and Manage the entire quotation hierarchy")
 
         self.panels_btn = QPushButton("🔌 Panels")
         self.panels_btn.clicked.connect(self.show_panels)
@@ -106,6 +107,7 @@ class QuotationDetailsWindow(QMainWindow):
         self.panel_module_page = PanelModulePage(self)
         self.common_specs_page = QuotationCommonSpecsPage(self)
         self.module_items_viewer_page = ModuleItemsViewerDialog(self) # Instantiate as a page
+        self.preview_page = QuotationPreviewPage(self)
         self.revision_page = QuotationRevisionPage(self)
         
         self.pages.addWidget(self.welcome_page)
@@ -114,6 +116,7 @@ class QuotationDetailsWindow(QMainWindow):
         self.pages.addWidget(self.panel_module_page)
         self.pages.addWidget(self.common_specs_page)
         self.pages.addWidget(self.module_items_viewer_page) # Add to stacked widget
+        self.pages.addWidget(self.preview_page)
         self.pages.addWidget(self.revision_page)
 
         main_layout.addWidget(sidebar_frame)
@@ -194,5 +197,13 @@ class QuotationDetailsWindow(QMainWindow):
             self.show_quotations()
 
     def show_preview(self):
-        # Placeholder for future implementation
-        pass
+        """Switches to the hierarchical Quotation Preview page."""
+        selected = self.quotation_page.table.selectionModel().selectedRows()
+        if selected:
+            row = selected[0].row()
+            quote_id = int(self.quotation_page.table.item(row, 0).text())
+            project_name = self.quotation_page.table.item(row, 7).text()
+            self.preview_page.load_quotation(quote_id, project_name)
+            self.pages.setCurrentWidget(self.preview_page)
+        else:
+            QMessageBox.warning(self, "Selection Required", "Please select a quotation to preview.")

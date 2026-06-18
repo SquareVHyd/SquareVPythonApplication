@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
     QLineEdit, QLabel, QAbstractItemView, QMessageBox, QStatusBar, QDialog,
-    QTextEdit, QComboBox, QMenu
+    QTextEdit, QComboBox, QMenu, QSplitter, QTabWidget, QGroupBox
 )
 from PySide6.QtCore import Qt, QTimer, QEvent, QPoint
 from PySide6.QtGui import QShortcut, QKeySequence, QAction
@@ -68,6 +68,9 @@ class SumCalculatorDialog(QDialog):
         self._calculate()
         super().accept()
 
+    def get_result(self):
+        return str(self.total)
+
     def _calculate(self):
         text = self.text_edit.toPlainText().strip()
         self.total = 0
@@ -95,19 +98,15 @@ class SumCalculatorDialog(QDialog):
         self.total = int(round(current_total))
         self.result_label.setText(f"Total Sum: {self.total}")
 
-class SteelSelectorDialog(QDialog):
-    """Dialog to manage steel specifications for a specific panel."""
-    def __init__(self, panel_id, parent=None):
+class SteelSelectorWidget(QWidget):
+    """Widget to manage steel specifications for a specific panel."""
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.panel_id = panel_id
-        self.setWindowTitle(f"Steel Specification for Panel ID: {panel_id}")
-        self.resize(1200, 400)
+        self.panel_id = None
         self.service = QuotationService()
         
         layout = QVBoxLayout(self)
-
-        # No CRUD buttons for single-row management
-        # The layout will contain only the table
+        layout.setContentsMargins(0, 0, 0, 0)
 
         self.table = SearchableTable()
         self.table.setColumnCount(19)
@@ -122,18 +121,62 @@ class SteelSelectorDialog(QDialog):
         layout.addWidget(self.table)
         
         self._setup_delegates()
-        self.load_data()
-
-        # Footer for Save action
-        self.btn_save = QPushButton("💾 Save Steel Specification & Close")
+        self.btn_save = QPushButton("💾 Save Steel Specification")
         self.btn_save.setStyleSheet("background-color: #2e7d32; color: white; font-weight: bold; padding: 8px;")
-        self.btn_save.clicked.connect(self.accept)
+        self.btn_save.clicked.connect(self.save_data)
         layout.addWidget(self.btn_save)
 
-    def accept(self):
-        """Gather data, apply defaults for empties, and save before closing."""
-        if self.table.rowCount() == 0:
-            super().accept()
+        # Calculation block
+        calc_layout = QHBoxLayout()
+        self.unit_cost_input = QLineEdit()
+        self.unit_cost_input.setPlaceholderText("Unit Cost (₹)")
+        self.unit_cost_input.setMaximumWidth(100)
+        
+        calc_btn = QPushButton("Calculate Cost")
+        calc_btn.clicked.connect(self.calculate_steel_cost)
+        
+        self.weight_lbl = QLabel("Total Weight: 0.00 kg")
+        self.weight_lbl.setStyleSheet("font-weight: bold;")
+        
+        self.cost_lbl = QLabel("Total Cost: ₹0.00")
+        self.cost_lbl.setStyleSheet("font-weight: bold; color: #dc2626;")
+        
+        calc_layout.addWidget(QLabel("Unit Cost/kg:"))
+        calc_layout.addWidget(self.unit_cost_input)
+        calc_layout.addWidget(calc_btn)
+        calc_layout.addStretch()
+        calc_layout.addWidget(self.weight_lbl)
+        calc_layout.addWidget(self.cost_lbl)
+        
+        layout.addLayout(calc_layout)
+
+    def load_data(self, panel_id, p_len=0.0, p_hgt=0.0, p_dep=0.0):
+        self.panel_id = panel_id
+        self.p_len = p_len
+        self.p_hgt = p_hgt
+        self.p_dep = p_dep
+        if not panel_id:
+            self.table.setRowCount(0)
+            return
+
+        self.table.blockSignals(True)
+        rows = self.service.get_steel_configs_by_panel(self.panel_id)
+        if not rows:
+            self.service.create_steel_config(self.panel_id)
+            rows = self.service.get_steel_configs_by_panel(self.panel_id)
+
+        self.table.setRowCount(len(rows))
+        for r, row in enumerate(rows):
+            for c, val in enumerate(row):
+                text = str(val) if val is not None else ""
+                item = NumericTableWidgetItem(text)
+                item.setFlags(item.flags() | Qt.ItemIsEditable if c >= 2 else item.flags() & ~Qt.ItemIsEditable)
+                self.table.setItem(r, c, item)
+        self.table.resizeColumnsToContents()
+        self.table.blockSignals(False)
+
+    def save_data(self):
+        if not self.panel_id or self.table.rowCount() == 0:
             return
 
         try:
@@ -161,20 +204,64 @@ class SteelSelectorDialog(QDialog):
                 "TypeOfSeating": get_text(8, "ISMC"),
                 "Canopy": get_text(9, "No"),
                 "IndoorOutdoor": get_text(10, "Indoor"),
-                "PanelFace": get_text(11, "single"), # Corrected default case
+                "PanelFace": get_text(11, "single"),
                 "DoubleDoor": get_text(12, "No"),
                 "DrawoutFixed": get_text(13, "No"),
                 "ProtectionClass": get_text(14, "IP 44"),
                 "CableEntry": get_text(15, "Top"),
-                "Mounting": get_text(16, "free stand"), # Corrected default case
+                "Mounting": get_text(16, "free stand"),
                 "SeatStand": get_text(17, "No"),
-                "StandMetalSize": get_text(18, "0") # Corrected to get_text as per schema
+                "StandMetalSize": get_text(18, "0")
             }
 
             self.service.update_full_steel_config(steel_id, data)
-            super().accept()
+            QMessageBox.information(self, "Success", "Steel specification saved successfully.")
         except Exception as e:
             QMessageBox.critical(self, "Save Error", f"Failed to save record: {e}")
+
+    def calculate_steel_cost(self):
+        if self.table.rowCount() == 0:
+            return
+        
+        try:
+            row = 0
+            def get_val(c):
+                item = self.table.item(row, c)
+                return item.text().strip() if item else ""
+            
+            fb_qty = float(get_val(2) or 0)
+            fb_size = get_val(3)
+            sides_qty = float(get_val(4) or 0)
+            sides_size = get_val(5)
+            bt_qty = float(get_val(6) or 0)
+            bt_size = get_val(7)
+            
+            import re
+            def get_thick(s):
+                m = re.search(r"(\d+(\.\d+)?)", s)
+                return float(m.group(1)) if m else 0.0
+
+            fb_t = get_thick(fb_size)
+            sides_t = get_thick(sides_size)
+            bt_t = get_thick(bt_size)
+            
+            density = 7850
+            
+            # Dimensions are in mm, volume in m^3 -> multiply by 1e-9
+            # Multiplied by 2 because each category represents a pair of sheets (Front/Back, Bottom/Top, Left/Right Sides)
+            fb_wt = fb_t * self.p_hgt * self.p_len * density * 1e-9 * fb_qty * 2
+            bt_wt = bt_t * self.p_len * self.p_dep * density * 1e-9 * bt_qty * 2
+            sides_wt = sides_t * self.p_dep * self.p_hgt * density * 1e-9 * sides_qty * 2
+            
+            total_wt = fb_wt + bt_wt + sides_wt
+            self.weight_lbl.setText(f"Total Weight: {total_wt:.2f} kg")
+            
+            unit_cost = float(self.unit_cost_input.text() or 0)
+            total_cost = total_wt * unit_cost
+            self.cost_lbl.setText(f"Total Cost: ₹{total_cost:,.2f}")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Calculation Error", f"Failed to calculate: {e}")
 
     def _setup_delegates(self):
         from app.ui.quotations.panel_delegates import ComboBoxDelegate
@@ -183,43 +270,23 @@ class SteelSelectorDialog(QDialog):
         seating = ["ISMC", "3 mm sheet", "Single value"]
         cable = ["Top", "Bottom", "Side", "Top&bottom"]
         mounting = ["Free Stand", "Wall"]
-        in_out = ["Indoor", "Outdoor"] # Default is 'Indoor'
-        face = ["single", "double"] # Default is 'single'
+        in_out = ["Indoor", "Outdoor"]
+        face = ["single", "double"]
         p_class = ["IP 44", "IP 45", "IP 55", "IP 65"]
 
-        # Assign delegates to specific columns based on requirements
         self.table.setItemDelegateForColumn(3, ComboBoxDelegate(self, items=sizes))
         self.table.setItemDelegateForColumn(5, ComboBoxDelegate(self, items=sizes))
         self.table.setItemDelegateForColumn(7, ComboBoxDelegate(self, items=sizes))
         self.table.setItemDelegateForColumn(8, ComboBoxDelegate(self, items=seating))
         self.table.setItemDelegateForColumn(9, ComboBoxDelegate(self, items=yn))
-        self.table.setItemDelegateForColumn(10, ComboBoxDelegate(self, items=in_out)) # IndoorOutdoor
-        self.table.setItemDelegateForColumn(11, ComboBoxDelegate(self, items=face)) # PanelFace
+        self.table.setItemDelegateForColumn(10, ComboBoxDelegate(self, items=in_out))
+        self.table.setItemDelegateForColumn(11, ComboBoxDelegate(self, items=face))
         self.table.setItemDelegateForColumn(12, ComboBoxDelegate(self, items=yn))
         self.table.setItemDelegateForColumn(13, ComboBoxDelegate(self, items=yn))
         self.table.setItemDelegateForColumn(14, ComboBoxDelegate(self, items=p_class))
         self.table.setItemDelegateForColumn(15, ComboBoxDelegate(self, items=cable))
-        self.table.setItemDelegateForColumn(16, ComboBoxDelegate(self, items=mounting)) # Mounting
-        self.table.setItemDelegateForColumn(17, ComboBoxDelegate(self, items=yn)) # Seat/Stand
-
-    def load_data(self):
-        self.table.blockSignals(True)
-        rows = self.service.get_steel_configs_by_panel(self.panel_id)
-        if not rows: # If no steel config exists, create one with defaults
-            self.service.create_steel_config(self.panel_id)
-            rows = self.service.get_steel_configs_by_panel(self.panel_id) # Re-fetch
-
-        self.table.setRowCount(len(rows))
-        editable_cols = set(range(2, 19))
-        for r, row in enumerate(rows):
-            for c, val in enumerate(row):
-                text = str(val) if val is not None else ""
-                item = NumericTableWidgetItem(text)
-                # All columns from 2 to 18 are editable
-                item.setFlags(item.flags() | Qt.ItemIsEditable if c >= 2 else item.flags() & ~Qt.ItemIsEditable)
-                self.table.setItem(r, c, item)
-        self.table.resizeColumnsToContents()
-        self.table.blockSignals(False)
+        self.table.setItemDelegateForColumn(16, ComboBoxDelegate(self, items=mounting))
+        self.table.setItemDelegateForColumn(17, ComboBoxDelegate(self, items=yn))
 
     def _handle_item_changed(self, item):
         self.table.blockSignals(True)
@@ -229,30 +296,25 @@ class SteelSelectorDialog(QDialog):
             return
 
         try:
-            # Only perform UI formatting validation here; DB saving is now handled in accept()
             val = item.text().strip()
-            if col in [2, 4, 6]: # Force integer for quantities
+            if col in [2, 4, 6]:
                 try:
                     val = int(val or 0)
-                except ValueError: # Catch specific error for int conversion
+                except ValueError:
                     val = "0"
-                item.setText(val)
+                item.setText(str(val))
         finally:
             self.table.blockSignals(False)
-        
-    def get_result(self):
-        return str(self.total)
 
-class PanelBBSelectorDialog(QDialog):
-    """Dialog to manage busbar specifications for a specific panel."""
-    def __init__(self, panel_id, parent=None):
+class PanelBBSelectorWidget(QWidget):
+    """Widget to manage busbar specifications for a specific panel."""
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.panel_id = panel_id
-        self.setWindowTitle(f"Busbar Specification for Panel ID: {panel_id}")
-        self.resize(1100, 400)
+        self.panel_id = None
         self.service = QuotationService()
         
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
 
         self.table = SearchableTable()
         self.table.setColumnCount(14)
@@ -263,15 +325,18 @@ class PanelBBSelectorDialog(QDialog):
         ])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         layout.addWidget(self.table)
-        
-        self.load_data()
 
-        self.btn_save = QPushButton("💾 Save Busbar Specification & Close")
+        self.btn_save = QPushButton("💾 Save Busbar Specification")
         self.btn_save.setStyleSheet("background-color: #0277bd; color: white; font-weight: bold; padding: 8px;")
-        self.btn_save.clicked.connect(self.accept)
+        self.btn_save.clicked.connect(self.save_data)
         layout.addWidget(self.btn_save)
 
-    def load_data(self):
+    def load_data(self, panel_id):
+        self.panel_id = panel_id
+        if not panel_id:
+            self.table.setRowCount(0)
+            return
+
         self.table.blockSignals(True)
         rows = self.service.get_panel_bb_configs_by_panel(self.panel_id)
         self.table.setRowCount(len(rows))
@@ -284,9 +349,8 @@ class PanelBBSelectorDialog(QDialog):
         self.table.resizeColumnsToContents()
         self.table.blockSignals(False)
 
-    def accept(self):
-        if self.table.rowCount() == 0:
-            super().accept()
+    def save_data(self):
+        if not self.panel_id or self.table.rowCount() == 0:
             return
 
         try:
@@ -319,7 +383,7 @@ class PanelBBSelectorDialog(QDialog):
                 "Select_BB_Earth": get_text(13, "")
             }
             self.service.update_full_panel_bb_config(bb_id, data)
-            super().accept()
+            QMessageBox.information(self, "Success", "Busbar specification saved successfully.")
         except Exception as e:
             QMessageBox.critical(self, "Save Error", f"Failed to save record: {e}")
 
@@ -373,6 +437,13 @@ class PanelPage(QWidget):
         header.addWidget(self.delete_btn)
         layout.addLayout(header)
 
+        self.splitter = QSplitter(Qt.Vertical)
+        
+        # Top Panel for main table
+        top_widget = QWidget()
+        top_layout = QVBoxLayout(top_widget)
+        top_layout.setContentsMargins(0, 0, 0, 0)
+        
         self.table = SearchableTable()
         self.table.setColumnCount(14)
         self.table.setHorizontalHeaderLabels([
@@ -382,19 +453,43 @@ class PanelPage(QWidget):
         ])
         self.table.hideColumn(0)
         self.table.hideColumn(1)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectItems)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows) # Select whole rows to trigger detail update
         self.table.itemDoubleClicked.connect(self._on_item_double_clicked)
-        # Connect the signal for inline editing
         self.table.itemChanged.connect(self._handle_item_changed)
-        layout.addWidget(self.table)
+        
+        # Connect selection change to load data into bottom tabs
+        self.table.itemSelectionChanged.connect(self._on_panel_selection_changed)
 
-        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.table.customContextMenuRequested.connect(self._show_context_menu)
+        top_layout.addWidget(self.table)
+        self.splitter.addWidget(top_widget)
 
         # Apply dropdown delegates for specific columns to allow inline selection
         self.table.setItemDelegateForColumn(12, ComboBoxDelegate(self, items=["Yes", "No"]))
         self.table.setItemDelegateForColumn(13, ComboBoxDelegate(self, items=["Aluminium", "Copper"]))
         self.table.setItemDelegateForColumn(10, ComboBoxDelegate(self, items=["7kA", "10kA", "16kA", "25kA", "36kA", "40kA", "50kA", "65kA", "100kA", "150KA"]))
+        
+        # Bottom Panels for Details (Stacked)
+        details_widget = QWidget()
+        details_layout = QVBoxLayout(details_widget)
+        details_layout.setContentsMargins(0, 0, 0, 0)
+        
+        steel_group = QGroupBox("Steel Specification")
+        steel_layout = QVBoxLayout(steel_group)
+        self.steel_widget = SteelSelectorWidget(self)
+        steel_layout.addWidget(self.steel_widget)
+        
+        bb_group = QGroupBox("Busbar Specification")
+        bb_layout = QVBoxLayout(bb_group)
+        self.bb_widget = PanelBBSelectorWidget(self)
+        bb_layout.addWidget(self.bb_widget)
+        
+        details_layout.addWidget(steel_group)
+        details_layout.addWidget(bb_group)
+        
+        self.splitter.addWidget(details_widget)
+        self.splitter.setSizes([350, 350]) # Split roughly equal
+        
+        layout.addWidget(self.splitter)
         
         self.status_bar = QStatusBar()
         layout.addWidget(self.status_bar)
@@ -465,32 +560,28 @@ class PanelPage(QWidget):
         if dialog.exec() == QDialog.Accepted:
             item.setText(dialog.get_result())
 
-    def _show_context_menu(self, pos: QPoint):
-        item = self.table.itemAt(pos)
-        if not item: return
-        
-        row = item.row()
-        panel_id = int(self.table.item(row, 0).text())
-        panel_name = self.table.item(row, 4).text()
-        
-        menu = QMenu(self)
-        select_steel_action = QAction(f"Select Steel Panel for: {panel_name}", self)
-        select_steel_action.triggered.connect(lambda: self._open_steel_selector(panel_id))
-        menu.addAction(select_steel_action)
+    def _on_panel_selection_changed(self):
+        selected_items = self.table.selectedItems()
+        if not selected_items:
+            self.steel_widget.load_data(None)
+            self.bb_widget.load_data(None)
+            return
+            
+        row = selected_items[0].row()
+        panel_id_item = self.table.item(row, 0)
+        if panel_id_item:
+            panel_id = int(panel_id_item.text())
+            
+            def get_dim(col):
+                try: return float(self.table.item(row, col).text())
+                except: return 0.0
+            
+            p_len = get_dim(6)
+            p_hgt = get_dim(7)
+            p_dep = get_dim(8)
 
-        select_bb_action = QAction(f"Busbar Details for: {panel_name}", self)
-        select_bb_action.triggered.connect(lambda: self._open_bb_selector(panel_id))
-        menu.addAction(select_bb_action)
-
-        menu.exec(self.table.viewport().mapToGlobal(pos))
-
-    def _open_steel_selector(self, panel_id):
-        dialog = SteelSelectorDialog(panel_id, self)
-        dialog.exec()
-
-    def _open_bb_selector(self, panel_id):
-        dialog = PanelBBSelectorDialog(panel_id, self)
-        dialog.exec()
+            self.steel_widget.load_data(panel_id, p_len, p_hgt, p_dep)
+            self.bb_widget.load_data(panel_id)
 
     def add_panel(self):
         dialog = PanelForm(self.quote_id, parent=self)

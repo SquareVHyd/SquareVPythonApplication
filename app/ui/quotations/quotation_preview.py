@@ -1,9 +1,11 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QFrame,
     QPushButton, QMessageBox, QTableWidget, QTableWidgetItem, QHeaderView,
-    QGroupBox, QSizePolicy, QDialog
+    QGroupBox, QSizePolicy, QDialog, QFormLayout, QComboBox, QLineEdit
 )
 from PySide6.QtCore import Qt
+import pyodbc
+from app.ui.searchable_table import SearchableTable, NumericTableWidgetItem
 from app.services.quotation_service import QuotationService
 from app.ui.quotations.quotation_form import QuotationForm
 from app.ui.quotations.panel_form import PanelForm
@@ -54,21 +56,46 @@ class QuotationPreviewPage(QWidget):
         self.project_name = project_name
         self.refresh_view()
 
+    def _clear_layout(self, layout):
+        while layout.count():
+            child = layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+            elif child.layout():
+                self._clear_layout(child.layout())
+
     def refresh_view(self):
         if not self.quote_id:
             return
 
         # Clear existing layout
-        while self.content_layout.count():
-            child = self.content_layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
+        self._clear_layout(self.content_layout)
 
         # 1. Quotation Details Section
         quote_data = self.service.get_quotation_by_id(self.quote_id)
         if quote_data:
             self.title_label.setText(f"Preview: {quote_data.get('QuoteProjectName', 'N/A')}")
             self._add_quotation_header(quote_data)
+
+            from PySide6.QtWidgets import QPushButton
+            btn_collapse_all = QPushButton("Collapse All Forms")
+            btn_collapse_all.setCheckable(True)
+            btn_collapse_all.setStyleSheet("background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px; font-weight: bold; margin-bottom: 5px;")
+            self.content_layout.addWidget(btn_collapse_all)
+            
+            customer_id = quote_data.get('CustomerId')
+            t1, c1 = self._add_customer_details(customer_id) if customer_id else (None, None)
+            t2, c2 = self._add_quotation_ctc_form()
+            t3, c3 = self._add_common_specs_form()
+
+            def toggle_all(checked):
+                btn_collapse_all.setText("Expand All Forms" if checked else "Collapse All Forms")
+                for t, c in [(t1, c1), (t2, c2), (t3, c3)]:
+                    if t and c:
+                        t.setChecked(not checked)
+                        self._toggle_container(not checked, c, t)
+
+            btn_collapse_all.clicked.connect(toggle_all)
 
         # 2. Panels Section
         panels = self.service.get_panels_by_quote(self.quote_id)
@@ -444,3 +471,258 @@ class QuotationPreviewPage(QWidget):
         dialog = SelectModuleItemsDialog(target_mt_id=mt_id, parent=self)
         if dialog.exec() == QDialog.Accepted:
             self.refresh_view()
+
+    def _add_customer_details(self, customer_id):
+        group = QGroupBox()
+        group.setStyleSheet("QGroupBox { border: 1px solid #cbd5e1; border-radius: 8px; margin-top: 10px; padding: 10px; }")
+        layout = QVBoxLayout(group)
+        
+        header = QHBoxLayout()
+        toggle_btn = QPushButton("▼")
+        toggle_btn.setFixedSize(24, 24)
+        toggle_btn.setCheckable(True)
+        toggle_btn.setChecked(True)
+        toggle_btn.setStyleSheet("font-weight: bold; border: none; background: transparent; color: #1e293b;")
+        
+        title_lbl = QLabel("<b>Customer Details</b>")
+        title_lbl.setStyleSheet("border: none; font-size: 14px;")
+        
+        header.addWidget(toggle_btn)
+        header.addWidget(title_lbl)
+        header.addStretch()
+        layout.addLayout(header)
+
+        container = QWidget()
+        container_layout = QVBoxLayout(container)
+        container.setContentsMargins(0, 0, 0, 0)
+        toggle_btn.clicked.connect(lambda checked: self._toggle_container(checked, container, toggle_btn))
+        layout.addWidget(container)
+        
+        table = SearchableTable()
+        try:
+            conn = pyodbc.connect('DSN=PostgreSQL35W;')
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM public."tblCustomers" WHERE "ID" = ?', (customer_id,))
+            columns = [col[0] for col in cursor.description]
+            rows = cursor.fetchall()
+            conn.close()
+
+            table.setColumnCount(len(columns))
+            table.setHorizontalHeaderLabels(columns)
+            table.setRowCount(len(rows))
+
+            for r, row in enumerate(rows):
+                for c, val in enumerate(row):
+                    text = str(val) if val is not None else ""
+                    item = NumericTableWidgetItem(text)
+                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                    table.setItem(r, c, item)
+
+            table.resizeColumnsToContents()
+            total_height = table.horizontalHeader().height() + 52
+            if len(rows) > 0:
+                total_height += table.rowHeight(0) * len(rows)
+            table.setFixedHeight(min(total_height, 150))
+            
+            container_layout.addWidget(table)
+            self.content_layout.addWidget(group)
+            return toggle_btn, container
+        except Exception as e:
+            container_layout.addWidget(QLabel(f"Failed to load customer details: {e}"))
+            self.content_layout.addWidget(group)
+            return None, None
+
+    def _add_quotation_ctc_form(self):
+        group = QGroupBox()
+        group.setStyleSheet("QGroupBox { border: 1px solid #cbd5e1; border-radius: 8px; margin-top: 10px; padding: 10px; }")
+        layout = QVBoxLayout(group)
+        
+        header = QHBoxLayout()
+        toggle_btn = QPushButton("▼")
+        toggle_btn.setFixedSize(24, 24)
+        toggle_btn.setCheckable(True)
+        toggle_btn.setChecked(True)
+        toggle_btn.setStyleSheet("font-weight: bold; border: none; background: transparent; color: #1e293b;")
+        
+        title_lbl = QLabel("<b>Quotation CTC</b>")
+        title_lbl.setStyleSheet("border: none; font-size: 14px;")
+        
+        header.addWidget(toggle_btn)
+        header.addWidget(title_lbl)
+        header.addStretch()
+        layout.addLayout(header)
+
+        container = QWidget()
+        container_layout = QFormLayout(container)
+        container.setContentsMargins(0, 0, 0, 0)
+        toggle_btn.clicked.connect(lambda checked: self._toggle_container(checked, container, toggle_btn))
+        layout.addWidget(container)
+        
+        try:
+            self.service.save_quote_ctc(QuoteID=self.quote_id)
+            rows = self.service.get_quote_ctc_list(self.quote_id)
+            if rows:
+                data = rows[0]
+                self.ctc_id = data[0]
+                
+                self.ctc_gst_input = QLineEdit(str(data[2]) if data[2] is not None else "")
+                self.ctc_freight_input = QLineEdit(str(data[3]) if data[3] is not None else "")
+                self.ctc_payment_input = QLineEdit(str(data[4]) if data[4] is not None else "")
+                self.ctc_warranty_input = QLineEdit(str(data[5]) if data[5] is not None else "")
+                self.ctc_validity_input = QLineEdit(str(data[6]) if data[6] is not None else "")
+                self.ctc_packing_input = QLineEdit(str(data[7]) if data[7] is not None else "")
+                self.ctc_inspection_input = QLineEdit(str(data[8]) if data[8] is not None else "")
+                self.ctc_delivery_input = QLineEdit(str(data[9]) if data[9] is not None else "")
+                self.ctc_bank_input = QLineEdit(str(data[10]) if data[10] is not None else "")
+                self.ctc_notes_input = QLineEdit(str(data[11]) if data[11] is not None else "")
+                
+                container_layout.addRow("GST / Taxes:", self.ctc_gst_input)
+                container_layout.addRow("Freight & Insurance:", self.ctc_freight_input)
+                container_layout.addRow("Payment:", self.ctc_payment_input)
+                container_layout.addRow("Warranty:", self.ctc_warranty_input)
+                container_layout.addRow("Validity:", self.ctc_validity_input)
+                container_layout.addRow("Packing:", self.ctc_packing_input)
+                container_layout.addRow("Inspection:", self.ctc_inspection_input)
+                container_layout.addRow("Delivery:", self.ctc_delivery_input)
+                container_layout.addRow("Bank Details:", self.ctc_bank_input)
+                container_layout.addRow("Notes:", self.ctc_notes_input)
+                
+                save_btn = QPushButton("💾 Save CTC")
+                save_btn.clicked.connect(self._save_ctc_form)
+                container_layout.addRow("", save_btn)
+                
+            self.content_layout.addWidget(group)
+            return toggle_btn, container
+        except Exception as e:
+            container_layout.addRow(QLabel(f"Failed to load CTC: {e}"))
+            self.content_layout.addWidget(group)
+            return None, None
+
+    def _save_ctc_form(self):
+        try:
+            self.service.update_quote_ctc_field(self.ctc_id, "GSTTax", self.ctc_gst_input.text())
+            self.service.update_quote_ctc_field(self.ctc_id, "FreightAndInsurance", self.ctc_freight_input.text())
+            self.service.update_quote_ctc_field(self.ctc_id, "Payment", self.ctc_payment_input.text())
+            self.service.update_quote_ctc_field(self.ctc_id, "Warranty", self.ctc_warranty_input.text())
+            self.service.update_quote_ctc_field(self.ctc_id, "Validity", self.ctc_validity_input.text())
+            self.service.update_quote_ctc_field(self.ctc_id, "Packing", self.ctc_packing_input.text())
+            self.service.update_quote_ctc_field(self.ctc_id, "Inspection", self.ctc_inspection_input.text())
+            self.service.update_quote_ctc_field(self.ctc_id, "Delivery", self.ctc_delivery_input.text())
+            self.service.update_quote_ctc_field(self.ctc_id, "BankDetails", self.ctc_bank_input.text())
+            self.service.update_quote_ctc_field(self.ctc_id, "Notes", self.ctc_notes_input.text())
+            QMessageBox.information(self, "Success", "CTC saved successfully.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to save CTC: {e}")
+
+    def _add_common_specs_form(self):
+        group = QGroupBox()
+        group.setStyleSheet("QGroupBox { border: 1px solid #cbd5e1; border-radius: 8px; margin-top: 10px; padding: 10px; }")
+        layout = QVBoxLayout(group)
+        
+        header = QHBoxLayout()
+        toggle_btn = QPushButton("▼")
+        toggle_btn.setFixedSize(24, 24)
+        toggle_btn.setCheckable(True)
+        toggle_btn.setChecked(True)
+        toggle_btn.setStyleSheet("font-weight: bold; border: none; background: transparent; color: #1e293b;")
+        
+        title_lbl = QLabel("<b>Common Specifications</b>")
+        title_lbl.setStyleSheet("border: none; font-size: 14px;")
+        
+        header.addWidget(toggle_btn)
+        header.addWidget(title_lbl)
+        header.addStretch()
+        layout.addLayout(header)
+
+        container = QWidget()
+        container_layout = QFormLayout(container)
+        container.setContentsMargins(0, 0, 0, 0)
+        toggle_btn.clicked.connect(lambda checked: self._toggle_container(checked, container, toggle_btn))
+        layout.addWidget(container)
+        
+        try:
+            self.service.save_common_specs(self.quote_id) # Ensure record exists
+            rows = self.service.get_common_specs_list(self.quote_id)
+            if rows:
+                data = rows[0]
+                self.spec_id = data[0]
+                
+                steel_values = [
+                    "2.0 mm(+/- 10%) Thick CRCA Sheet steel",
+                    "1.6 mm(+/- 10%) Thick CRCA Sheet steel",
+                    "3.0 mm(+/- 10%) Thick CRCA Sheet steel"
+                ]
+
+                self.frames_input = QComboBox(); self.frames_input.setEditable(True); self.frames_input.addItems(steel_values)
+                self.partitions_input = QComboBox(); self.partitions_input.setEditable(True); self.partitions_input.addItems(steel_values)
+                self.doors_input = QComboBox(); self.doors_input.setEditable(True); self.doors_input.addItems(steel_values)
+                self.gland_plates_input = QComboBox(); self.gland_plates_input.setEditable(True); self.gland_plates_input.addItems(steel_values)
+                self.system_input = QLineEdit()
+                self.control_supply_input = QComboBox(); self.control_supply_input.setEditable(True)
+                self.control_supply_input.addItems(["230 Vac/50Hz Phase & Neutral", "110 Vac/50Hz Phase & Neutral"])
+                self.busbar_sleeves_input = QLineEdit()
+                self.busbar_supports_input = QLineEdit()
+                self.busbar_metal_input = QComboBox(); self.busbar_metal_input.setEditable(True)
+                self.busbar_metal_input.addItems(["Aluminium", "Copper"])
+                self.cd_al_input = QLineEdit()
+                self.cd_cu_input = QLineEdit()
+                self.painting_color_input = QLineEdit()
+                
+                self.frames_input.setCurrentText(str(data[2]) if data[2] is not None else "")
+                self.partitions_input.setCurrentText(str(data[3]) if data[3] is not None else "")
+                self.doors_input.setCurrentText(str(data[4]) if data[4] is not None else "")
+                self.gland_plates_input.setCurrentText(str(data[5]) if data[5] is not None else "")
+                self.system_input.setText(str(data[6]) if data[6] is not None else "")
+                self.control_supply_input.setCurrentText(str(data[7]) if data[7] is not None else "")
+                self.busbar_sleeves_input.setText(str(data[8]) if data[8] is not None else "")
+                self.busbar_supports_input.setText(str(data[9]) if data[9] is not None else "")
+                self.busbar_metal_input.setCurrentText(str(data[10]) if data[10] is not None else "")
+                self.cd_al_input.setText(str(data[11]) if data[11] is not None else "")
+                self.cd_cu_input.setText(str(data[12]) if data[12] is not None else "")
+                self.painting_color_input.setText(str(data[13]) if data[13] is not None else "")
+
+                container_layout.addRow("Frames:", self.frames_input)
+                container_layout.addRow("Partitions:", self.partitions_input)
+                container_layout.addRow("Doors:", self.doors_input)
+                container_layout.addRow("Gland Plates:", self.gland_plates_input)
+                container_layout.addRow("System:", self.system_input)
+                container_layout.addRow("Control Supply:", self.control_supply_input)
+                container_layout.addRow("Busbar Sleeves:", self.busbar_sleeves_input)
+                container_layout.addRow("Busbar Supports:", self.busbar_supports_input)
+                container_layout.addRow("Busbar Metal:", self.busbar_metal_input)
+                container_layout.addRow("Current Density (AL):", self.cd_al_input)
+                container_layout.addRow("Current Density (CU):", self.cd_cu_input)
+                container_layout.addRow("Painting Color:", self.painting_color_input)
+
+                save_btn = QPushButton("💾 Save Common Specs")
+                save_btn.clicked.connect(self._save_common_specs_form)
+                container_layout.addRow("", save_btn)
+                
+            self.content_layout.addWidget(group)
+            return toggle_btn, container
+        except Exception as e:
+            container_layout.addRow(QLabel(f"Failed to load Common Specs: {e}"))
+            self.content_layout.addWidget(group)
+            return None, None
+
+    def _save_common_specs_form(self):
+        try:
+            mapping = {
+                "Frames": self.frames_input.currentText(),
+                "Partitions": self.partitions_input.currentText(),
+                "Doors": self.doors_input.currentText(),
+                "GlandPlates": self.gland_plates_input.currentText(),
+                "System": self.system_input.text(),
+                "ControlSupply": self.control_supply_input.currentText(),
+                "BusbarSleeves": self.busbar_sleeves_input.text(),
+                "BusbarSupports": self.busbar_supports_input.text(),
+                "BusbarMetal": self.busbar_metal_input.currentText(),
+                "CurrentDensity_AL": self.cd_al_input.text(),
+                "CurrentDensity_CU": self.cd_cu_input.text(),
+                "PaintingColor": self.painting_color_input.text()
+            }
+            for col_name, value in mapping.items():
+                self.service.update_common_specs_field(self.spec_id, col_name, value)
+            QMessageBox.information(self, "Success", "Common specifications saved successfully.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to save Common Specs: {e}")

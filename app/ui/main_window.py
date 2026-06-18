@@ -21,6 +21,7 @@ from app.ui.master.master_data_page import MasterDataPage
 from app.config.ui_state import UIStateManager
 from app.ui.quotations.quotation_details_page import QuotationDetailsPage
 from app.ui.dashboard.dashboard_page import DashboardPage
+from app.ui.generic_spec.generic_spec_page import GenericSpecPage
 
 
 class MainWindow(QMainWindow):
@@ -70,6 +71,7 @@ class MainWindow(QMainWindow):
         self.customers_btn = QPushButton("👥 Customers")
         self.quotation_details_btn = QPushButton("📝 Quotation Details")
         self.pricelist_btn = QPushButton("🧾 Price List")
+        self.generic_spec_btn = QPushButton("🏷️ Generic Description")
         self.modules_btn = QPushButton("📚 Modules")
         self.busbar_btn = QPushButton("⚡ Busbar Materials")
         self.utilities_btn = QPushButton("🔧 Utilities")
@@ -80,6 +82,7 @@ class MainWindow(QMainWindow):
         self.customers_btn.setToolTip(self.shortcuts_tip)
         self.quotation_details_btn.setToolTip(self.shortcuts_tip)
         self.pricelist_btn.setToolTip(self.shortcuts_tip)
+        self.generic_spec_btn.setToolTip("Map Generic Specifications to Price List Items")
         self.modules_btn.setToolTip(self.shortcuts_tip)
         self.busbar_btn.setToolTip(self.shortcuts_tip)
         self.master_btn.setToolTip("View raw database tables")
@@ -88,6 +91,7 @@ class MainWindow(QMainWindow):
         self.customers_btn.clicked.connect(self.show_customers)
         self.quotation_details_btn.clicked.connect(self.show_quotation_details)
         self.pricelist_btn.clicked.connect(self.show_pricelist)
+        self.generic_spec_btn.clicked.connect(self.show_generic_spec)
         self.modules_btn.clicked.connect(self.show_modules)
         self.busbar_btn.clicked.connect(self.show_busbar)
         self.utilities_btn.clicked.connect(self.show_utilities)
@@ -108,6 +112,7 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(self.customers_btn)
         sidebar_layout.addWidget(self.quotation_details_btn)
         sidebar_layout.addWidget(self.pricelist_btn)
+        sidebar_layout.addWidget(self.generic_spec_btn)
         sidebar_layout.addWidget(self.modules_btn)
         sidebar_layout.addWidget(self.busbar_btn)
         sidebar_layout.addWidget(self.master_btn)
@@ -129,6 +134,7 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(BusbarPage())
         self.pages.addWidget(MasterDataPage())
         self.pages.addWidget(QuotationDetailsPage(self)) # Index 6
+        self.pages.addWidget(GenericSpecPage()) # Index 7
 
         self.shortcut_help = QShortcut(QKeySequence("F1"), self)
         self.shortcut_help.activated.connect(self.show_shortcuts)
@@ -166,6 +172,8 @@ class MainWindow(QMainWindow):
             page = self.pages.widget(i)
             if hasattr(page, "_save_state"):
                 page._save_state()
+            if hasattr(page, "cleanup_workers"):
+                page.cleanup_workers()
 
         event.accept()
 
@@ -202,6 +210,13 @@ class MainWindow(QMainWindow):
     def show_pricelist(self):
         self.pages.setCurrentIndex(2)
         UIStateManager.save_current_page(2)
+
+    def show_generic_spec(self):
+        self.pages.setCurrentIndex(7)
+        page = self.pages.widget(7)
+        if hasattr(page, 'refresh_all'):
+            page.refresh_all()
+        UIStateManager.save_current_page(7)
 
     def show_modules(self):
         self.pages.setCurrentIndex(3)

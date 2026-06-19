@@ -12,6 +12,10 @@ from app.ui.quotations.panel_form import PanelForm
 from app.ui.quotations.modules.panel_module_form import PanelModuleForm
 from app.ui.quotations.module_items.module_item_form import ModuleItemForm
 from app.ui.quotations.module_items.select_module_items_dialog import SelectModuleItemsDialog
+from app.ui.quotations.ctc_constants import (
+    GST_OPTIONS, FREIGHT_OPTIONS, PAYMENT_OPTIONS, WARRANTY_OPTIONS,
+    VALIDITY_OPTIONS, PACKING_OPTIONS, INSPECTION_OPTIONS, DELIVERY_OPTIONS
+)
 
 class QuotationPreviewPage(QWidget):
     """
@@ -31,7 +35,7 @@ class QuotationPreviewPage(QWidget):
         # Header Section
         header = QHBoxLayout()
         self.title_label = QLabel("Quotation Preview & Management")
-        self.title_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #1e293b;")
+        self.title_label.setStyleSheet("font-size: 24px; font-weight: bold; color: #0f172a;")
         
         self.refresh_btn = QPushButton("🔄 Refresh View")
         self.refresh_btn.clicked.connect(self.refresh_view)
@@ -96,6 +100,10 @@ class QuotationPreviewPage(QWidget):
                         self._toggle_container(not checked, c, t)
 
             btn_collapse_all.clicked.connect(toggle_all)
+            
+            # Collapse by default
+            btn_collapse_all.setChecked(True)
+            toggle_all(True)
 
         # 2. Panels Section
         panels = self.service.get_panels_by_quote(self.quote_id)
@@ -117,19 +125,42 @@ class QuotationPreviewPage(QWidget):
 
         panel_section_header = QHBoxLayout()
         panel_title = QLabel(f"Panels ({len(panels)})")
-        panel_title.setStyleSheet("font-size: 16px; font-weight: bold; color: #334155; margin-top: 10px;")
+        panel_title.setStyleSheet("font-size: 20px; font-weight: bold; color: #0f172a; margin-top: 10px;")
         grand_total_lbl = QLabel(f"<b>Total Quotation Price =</b> ₹{grand_total:,.2f}")
-        grand_total_lbl.setStyleSheet("font-size: 16px; color: #dc2626; font-weight: bold; margin-top: 10px; margin-left: 20px;")
+        grand_total_lbl.setStyleSheet("font-size: 18px; color: #b91c1c; font-weight: bold; margin-top: 10px; margin-left: 20px;")
+        
+        btn_collapse_panels = QPushButton("Collapse All Panels")
+        btn_collapse_panels.setCheckable(True)
+        btn_collapse_panels.setStyleSheet("background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px; font-weight: bold; margin-top: 10px;")
+        
         add_panel_btn = QPushButton("➕ Add Panel")
         add_panel_btn.clicked.connect(self._add_panel)
+        add_panel_btn.setStyleSheet("margin-top: 10px;")
+        
         panel_section_header.addWidget(panel_title)
         panel_section_header.addWidget(grand_total_lbl)
         panel_section_header.addStretch()
+        panel_section_header.addWidget(btn_collapse_panels)
         panel_section_header.addWidget(add_panel_btn)
         self.content_layout.addLayout(panel_section_header)
 
+        self.panel_toggles = []
         for p_row in panels:
-            self._add_panel_widget(p_row)
+            t, c = self._add_panel_widget(p_row)
+            if t and c:
+                self.panel_toggles.append((t, c))
+
+        def toggle_all_panels(checked):
+            btn_collapse_panels.setText("Expand All Panels" if checked else "Collapse All Panels")
+            for t, c in self.panel_toggles:
+                t.setChecked(not checked)
+                self._toggle_container(not checked, c, t)
+
+        btn_collapse_panels.clicked.connect(toggle_all_panels)
+        
+        # Collapse panels by default
+        btn_collapse_panels.setChecked(True)
+        toggle_all_panels(True)
 
         self.content_layout.addStretch()
 
@@ -188,11 +219,11 @@ class QuotationPreviewPage(QWidget):
         toggle_btn.setStyleSheet("font-weight: bold; border: none; background: transparent; color: #1e293b;")
 
         p_info = QLabel(f"<b>Panel:</b> {name} ({cat}) | <b>Qty:</b> {qty} | <b>Dim:</b> {l}x{h}x{d}")
-        p_info.setStyleSheet("border: none; font-size: 13px;")
+        p_info.setStyleSheet("border: none; font-size: 14px; color: #1e293b;")
         
         # Panel Cost Label
         total_panel_lbl = QLabel(f"<b>Qty =</b> {panel_qty} | <b>Unit Panel Cost =</b> ₹{panel_total:,.2f} | <b>Total Panel Cost =</b> ₹{total_panel_cost:,.2f}")
-        total_panel_lbl.setStyleSheet("border: none; color: #1d4ed8; font-weight: bold; margin-left: 15px;")
+        total_panel_lbl.setStyleSheet("border: none; font-size: 14px; color: #2563eb; font-weight: bold; margin-left: 15px;")
 
         edit_btn = QPushButton("✏️")
         edit_btn.setToolTip("Edit Panel")
@@ -228,6 +259,7 @@ class QuotationPreviewPage(QWidget):
             self._add_module_widget(modules_layout, m_row)
 
         self.content_layout.addWidget(panel_frame)
+        return toggle_btn, modules_container
 
     def _add_module_widget(self, parent_layout, m_row):
         # Unpack based on QuotationService.get_panel_modules_by_panel_id order
@@ -254,11 +286,11 @@ class QuotationPreviewPage(QWidget):
         toggle_btn.setStyleSheet("font-weight: bold; border: none; background: transparent; color: #334155;")
 
         mod_lbl = QLabel(f"<b>Module:</b> {mt_name} | <b>Ing/Og:</b> {ing_og} | <b>P/kA:</b> {pole}/{ka}")
-        mod_lbl.setStyleSheet("border: none;")
+        mod_lbl.setStyleSheet("border: none; font-size: 13px; color: #334155;")
         
         # Total Module Cost Label
         total_mod_lbl = QLabel(f"<b>Qty =</b> {m_qty} | <b>Unit Module Cost =</b> ₹{total_items_amount:,.2f} | <b>Module Total =</b> ₹{module_total:,.2f}")
-        total_mod_lbl.setStyleSheet("border: none; color: #059669; font-weight: bold; margin-left: 15px;")
+        total_mod_lbl.setStyleSheet("border: none; font-size: 13px; color: #059669; font-weight: bold; margin-left: 15px;")
 
         m_edit_btn = QPushButton("✏️")
         m_edit_btn.setFixedSize(24, 24)
@@ -565,14 +597,25 @@ class QuotationPreviewPage(QWidget):
                 data = rows[0]
                 self.ctc_id = data[0]
                 
-                self.ctc_gst_input = QLineEdit(str(data[2]) if data[2] is not None else "")
-                self.ctc_freight_input = QLineEdit(str(data[3]) if data[3] is not None else "")
-                self.ctc_payment_input = QLineEdit(str(data[4]) if data[4] is not None else "")
-                self.ctc_warranty_input = QLineEdit(str(data[5]) if data[5] is not None else "")
-                self.ctc_validity_input = QLineEdit(str(data[6]) if data[6] is not None else "")
-                self.ctc_packing_input = QLineEdit(str(data[7]) if data[7] is not None else "")
-                self.ctc_inspection_input = QLineEdit(str(data[8]) if data[8] is not None else "")
-                self.ctc_delivery_input = QLineEdit(str(data[9]) if data[9] is not None else "")
+                def create_combo(options, current_val):
+                    combo = QComboBox()
+                    combo.setEditable(True)
+                    combo.addItems(options)
+                    if current_val:
+                        combo.setCurrentText(str(current_val))
+                    else:
+                        combo.setCurrentIndex(0)
+                    return combo
+
+                self.ctc_gst_input = create_combo(GST_OPTIONS, data[2])
+                self.ctc_freight_input = create_combo(FREIGHT_OPTIONS, data[3])
+                self.ctc_payment_input = create_combo(PAYMENT_OPTIONS, data[4])
+                self.ctc_warranty_input = create_combo(WARRANTY_OPTIONS, data[5])
+                self.ctc_validity_input = create_combo(VALIDITY_OPTIONS, data[6])
+                self.ctc_packing_input = create_combo(PACKING_OPTIONS, data[7])
+                self.ctc_inspection_input = create_combo(INSPECTION_OPTIONS, data[8])
+                self.ctc_delivery_input = create_combo(DELIVERY_OPTIONS, data[9])
+                
                 self.ctc_bank_input = QLineEdit(str(data[10]) if data[10] is not None else "")
                 self.ctc_notes_input = QLineEdit(str(data[11]) if data[11] is not None else "")
                 
@@ -600,14 +643,14 @@ class QuotationPreviewPage(QWidget):
 
     def _save_ctc_form(self):
         try:
-            self.service.update_quote_ctc_field(self.ctc_id, "GSTTax", self.ctc_gst_input.text())
-            self.service.update_quote_ctc_field(self.ctc_id, "FreightAndInsurance", self.ctc_freight_input.text())
-            self.service.update_quote_ctc_field(self.ctc_id, "Payment", self.ctc_payment_input.text())
-            self.service.update_quote_ctc_field(self.ctc_id, "Warranty", self.ctc_warranty_input.text())
-            self.service.update_quote_ctc_field(self.ctc_id, "Validity", self.ctc_validity_input.text())
-            self.service.update_quote_ctc_field(self.ctc_id, "Packing", self.ctc_packing_input.text())
-            self.service.update_quote_ctc_field(self.ctc_id, "Inspection", self.ctc_inspection_input.text())
-            self.service.update_quote_ctc_field(self.ctc_id, "Delivery", self.ctc_delivery_input.text())
+            self.service.update_quote_ctc_field(self.ctc_id, "GSTTax", self.ctc_gst_input.currentText())
+            self.service.update_quote_ctc_field(self.ctc_id, "FreightAndInsurance", self.ctc_freight_input.currentText())
+            self.service.update_quote_ctc_field(self.ctc_id, "Payment", self.ctc_payment_input.currentText())
+            self.service.update_quote_ctc_field(self.ctc_id, "Warranty", self.ctc_warranty_input.currentText())
+            self.service.update_quote_ctc_field(self.ctc_id, "Validity", self.ctc_validity_input.currentText())
+            self.service.update_quote_ctc_field(self.ctc_id, "Packing", self.ctc_packing_input.currentText())
+            self.service.update_quote_ctc_field(self.ctc_id, "Inspection", self.ctc_inspection_input.currentText())
+            self.service.update_quote_ctc_field(self.ctc_id, "Delivery", self.ctc_delivery_input.currentText())
             self.service.update_quote_ctc_field(self.ctc_id, "BankDetails", self.ctc_bank_input.text())
             self.service.update_quote_ctc_field(self.ctc_id, "Notes", self.ctc_notes_input.text())
             QMessageBox.information(self, "Success", "CTC saved successfully.")

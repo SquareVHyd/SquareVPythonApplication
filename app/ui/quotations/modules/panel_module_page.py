@@ -69,6 +69,12 @@ class PanelModulePage(QWidget):
         self.delete_btn = QPushButton("🗑️ Delete")
         self.delete_btn.clicked.connect(self.delete_module)
 
+        self.copy_btn = QPushButton("📋 Copy")
+        self.copy_btn.clicked.connect(self.copy_module)
+        
+        self.paste_btn = QPushButton("📋 Paste")
+        self.paste_btn.clicked.connect(self.paste_module)
+
         header.addWidget(self.back_btn)
         header.addWidget(self.title_label)
         header.addWidget(self.panel_selection_combo)
@@ -79,6 +85,8 @@ class PanelModulePage(QWidget):
         header.addWidget(self.add_btn)
         header.addWidget(self.edit_btn)
         header.addWidget(self.delete_btn)
+        header.addWidget(self.copy_btn)
+        header.addWidget(self.paste_btn)
         layout.addLayout(header)
 
         self.table = SearchableTable()
@@ -231,6 +239,37 @@ class PanelModulePage(QWidget):
         if QMessageBox.question(self, "Confirm", "Delete selected module(s)?") == QMessageBox.Yes:
             for idx in selected: self.service.delete_panel_module(int(self.table.item(idx.row(), 0).text()))
             self.refresh_table()
+
+    def copy_module(self):
+        selected = self.table.selectionModel().selectedRows()
+        if not selected:
+            QMessageBox.warning(self, "Selection Required", "Please select a module to copy.")
+            return
+        row = selected[0].row()
+        module_id = int(self.table.item(row, 0).text())
+        module_name = self.table.item(row, 6).text()
+        
+        self.service.clipboard["type"] = "module"
+        self.service.clipboard["id"] = module_id
+        self.service.clipboard["name"] = module_name
+        QMessageBox.information(self, "Copied", f"Module '{module_name}' copied to clipboard.")
+
+    def paste_module(self):
+        target_panel_id = self.panel_selection_combo.currentData()
+        if target_panel_id is None:
+            QMessageBox.warning(self, "Error", "Please select a target panel from the dropdown to paste into.")
+            return
+            
+        if self.service.clipboard.get("type") != "module" or not self.service.clipboard.get("id"):
+            QMessageBox.warning(self, "Clipboard Empty", "No module in clipboard to paste.")
+            return
+            
+        try:
+            self.service.copy_panel_module(self.service.clipboard["id"], target_panel_id)
+            QMessageBox.information(self, "Pasted", "Module pasted successfully.")
+            self.refresh_table()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to paste module: {e}")
 
     def _handle_item_changed(self, item):
         if not item or item.row() < 0: return

@@ -58,6 +58,12 @@ class QuotationPage(QWidget):
         self.delete_btn = QPushButton("🗑️ Delete")
         self.delete_btn.setToolTip("(Delete)")
         self.delete_btn.clicked.connect(self.delete_quotation)
+        
+        self.copy_btn = QPushButton("📋 Copy")
+        self.copy_btn.clicked.connect(self.copy_quotation)
+        
+        self.paste_btn = QPushButton("📋 Paste")
+        self.paste_btn.clicked.connect(self.paste_quotation)
 
         header.addWidget(title)
         header.addStretch()
@@ -67,6 +73,8 @@ class QuotationPage(QWidget):
         header.addWidget(self.add_btn)
         header.addWidget(self.edit_btn)
         header.addWidget(self.delete_btn)
+        header.addWidget(self.copy_btn)
+        header.addWidget(self.paste_btn)
         layout.addLayout(header)
 
         # Table
@@ -92,24 +100,7 @@ class QuotationPage(QWidget):
         # Double click to edit
         self.table.itemDoubleClicked.connect(self.edit_quotation)
         
-        self.splitter = QSplitter(Qt.Vertical)
-        
-        top_widget = QWidget()
-        top_layout = QVBoxLayout(top_widget)
-        top_layout.setContentsMargins(0, 0, 0, 0)
-        top_layout.addWidget(self.table)
-        self.splitter.addWidget(top_widget)
-        
-        self.scroll_area = QScrollArea()
-        self.scroll_area.setWidgetResizable(True)
-        self.details_container = QWidget()
-        self.details_layout = QVBoxLayout(self.details_container)
-        self.details_layout.setAlignment(Qt.AlignTop)
-        self.scroll_area.setWidget(self.details_container)
-        self.splitter.addWidget(self.scroll_area)
-        
-        self.splitter.setSizes([400, 300])
-        layout.addWidget(self.splitter)
+        layout.addWidget(self.table)
 
         self.status_bar = QStatusBar()
         layout.addWidget(self.status_bar)
@@ -120,47 +111,11 @@ class QuotationPage(QWidget):
         QShortcut(QKeySequence("Delete"), self, activated=self.delete_quotation)
         QShortcut(QKeySequence("Ctrl+F"), self, activated=lambda: self.search_box.setFocus())
 
-    def _clear_layout(self, layout):
-        while layout.count():
-            child = layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
-            elif child.layout():
-                self._clear_layout(child.layout())
-
-    def _toggle_container(self, checked, container, btn):
-        container.setVisible(checked)
-        btn.setText("▼" if checked else "▶")
-
     def _on_selection_changed(self):
         """Enables the Panels button and updates the detail views."""
         selected = self.table.selectionModel().selectedRows()
         if hasattr(self.parent_quotation_details_page, 'update_panels_button_state'):
             self.parent_quotation_details_page.update_panels_button_state(len(selected) == 1)
-            
-        self._clear_layout(self.details_layout)
-        if len(selected) == 1:
-            from PySide6.QtWidgets import QPushButton
-            btn_collapse_all = QPushButton("Collapse All Forms")
-            btn_collapse_all.setCheckable(True)
-            btn_collapse_all.setStyleSheet("background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px; font-weight: bold; margin-bottom: 5px;")
-            self.details_layout.addWidget(btn_collapse_all)
-
-            row = selected[0].row()
-            quote_id = int(self.table.item(row, 0).text())
-            customer_id = int(self.table.item(row, 1).text())
-            t1, c1 = self._add_customer_details(customer_id)
-            t2, c2 = self._add_quotation_ctc_form(quote_id)
-            t3, c3 = self._add_common_specs_form(quote_id)
-
-            def toggle_all(checked):
-                btn_collapse_all.setText("Expand All Forms" if checked else "Collapse All Forms")
-                for t, c in [(t1, c1), (t2, c2), (t3, c3)]:
-                    if t and c:
-                        t.setChecked(not checked)
-                        self._toggle_container(not checked, c, t)
-
-            btn_collapse_all.clicked.connect(toggle_all)
 
     def add_quotation(self):
         """Opens the form to add a new quotation."""
@@ -225,6 +180,32 @@ class QuotationPage(QWidget):
                 self.refresh_table()
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to delete: {e}")
+
+    def copy_quotation(self):
+        selected = self.table.selectionModel().selectedRows()
+        if not selected:
+            QMessageBox.warning(self, "Selection Required", "Please select a quotation to copy.")
+            return
+        row = selected[0].row()
+        quote_id = int(self.table.item(row, 0).text())
+        project_name = self.table.item(row, 7).text()
+        
+        self.service.clipboard["type"] = "quotation"
+        self.service.clipboard["id"] = quote_id
+        self.service.clipboard["name"] = project_name
+        QMessageBox.information(self, "Copied", f"Quotation '{project_name}' copied to clipboard.")
+
+    def paste_quotation(self):
+        if self.service.clipboard.get("type") != "quotation" or not self.service.clipboard.get("id"):
+            QMessageBox.warning(self, "Clipboard Empty", "No quotation in clipboard to paste.")
+            return
+            
+        try:
+            self.service.copy_quotation(self.service.clipboard["id"])
+            QMessageBox.information(self, "Pasted", "Quotation pasted successfully.")
+            self.refresh_table()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to paste quotation: {e}")
 
     def show_panels(self):
         """Opens the Panel Manager for the selected quotation."""
@@ -299,6 +280,11 @@ class QuotationPage(QWidget):
         customer_name = self.table.item(row, 2).text()
         
         menu = QMenu(self)
+        
+        process_action = QAction(f"📑 Quotation Process: {project_name}", self)
+        process_action.triggered.connect(lambda: self._open_quotation_process(row))
+        menu.addAction(process_action)
+        
         items_action = QAction(f"📦 View Module Items: {project_name}", self)
         items_action.triggered.connect(lambda: self.parent_quotation_details_page.show_items())
         menu.addAction(items_action)
@@ -321,6 +307,11 @@ class QuotationPage(QWidget):
         if self.parent_quotation_details_page:
             self.parent_quotation_details_page.show_revision()
 
+    def _open_quotation_process(self, row):
+        if self.parent_quotation_details_page:
+            self.table.selectRow(row)
+            self.parent_quotation_details_page.show_preview()
+
     def _open_ctc_dialog(self, quote_id, project_name):
         dialog = QuotationCTCDialog(quote_id, project_name, self)
         dialog.exec()
@@ -329,269 +320,3 @@ class QuotationPage(QWidget):
         """Opens the quotation preview dialog."""
         dialog = QuotationPreviewDialog(quote_id, self)
         dialog.exec()
-
-    def _view_customer_details(self, customer_id):
-        dialog = CustomerViewDialog(customer_id, self)
-        dialog.exec()
-
-    def _add_customer_details(self, customer_id):
-        group = QGroupBox()
-        group.setStyleSheet("QGroupBox { border: 1px solid #cbd5e1; border-radius: 8px; margin-top: 10px; padding: 10px; }")
-        layout = QVBoxLayout(group)
-        
-        header = QHBoxLayout()
-        toggle_btn = QPushButton("▼")
-        toggle_btn.setFixedSize(24, 24)
-        toggle_btn.setCheckable(True)
-        toggle_btn.setChecked(True)
-        toggle_btn.setStyleSheet("font-weight: bold; border: none; background: transparent; color: #1e293b;")
-        
-        title_lbl = QLabel("<b>Customer Details</b>")
-        title_lbl.setStyleSheet("border: none; font-size: 14px;")
-        
-        header.addWidget(toggle_btn)
-        header.addWidget(title_lbl)
-        header.addStretch()
-        layout.addLayout(header)
-
-        container = QWidget()
-        container_layout = QVBoxLayout(container)
-        container.setContentsMargins(0, 0, 0, 0)
-        toggle_btn.clicked.connect(lambda checked: self._toggle_container(checked, container, toggle_btn))
-        layout.addWidget(container)
-        
-        table = SearchableTable()
-        try:
-            import pyodbc
-            conn = pyodbc.connect('DSN=PostgreSQL35W;')
-            cursor = conn.cursor()
-            cursor.execute('SELECT * FROM public."tblCustomers" WHERE "ID" = ?', (customer_id,))
-            columns = [col[0] for col in cursor.description]
-            rows = cursor.fetchall()
-            conn.close()
-
-            table.setColumnCount(len(columns))
-            table.setHorizontalHeaderLabels(columns)
-            table.setRowCount(len(rows))
-
-            for r, row in enumerate(rows):
-                for c, val in enumerate(row):
-                    text = str(val) if val is not None else ""
-                    item = NumericTableWidgetItem(text)
-                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                    table.setItem(r, c, item)
-
-            table.resizeColumnsToContents()
-            total_height = table.horizontalHeader().height() + 52
-            if len(rows) > 0:
-                total_height += table.rowHeight(0) * len(rows)
-            table.setFixedHeight(min(total_height, 150))
-            
-            container_layout.addWidget(table)
-            self.details_layout.addWidget(group)
-            return toggle_btn, container
-        except Exception as e:
-            container_layout.addWidget(QLabel(f"Failed to load customer details: {e}"))
-            self.details_layout.addWidget(group)
-            return None, None
-
-    def _add_quotation_ctc_form(self, quote_id):
-        group = QGroupBox()
-        group.setStyleSheet("QGroupBox { border: 1px solid #cbd5e1; border-radius: 8px; margin-top: 10px; padding: 10px; }")
-        layout = QVBoxLayout(group)
-        
-        header = QHBoxLayout()
-        toggle_btn = QPushButton("▼")
-        toggle_btn.setFixedSize(24, 24)
-        toggle_btn.setCheckable(True)
-        toggle_btn.setChecked(True)
-        toggle_btn.setStyleSheet("font-weight: bold; border: none; background: transparent; color: #1e293b;")
-        
-        title_lbl = QLabel("<b>Quotation CTC</b>")
-        title_lbl.setStyleSheet("border: none; font-size: 14px;")
-        
-        header.addWidget(toggle_btn)
-        header.addWidget(title_lbl)
-        header.addStretch()
-        layout.addLayout(header)
-
-        container = QWidget()
-        container_layout = QFormLayout(container)
-        container.setContentsMargins(0, 0, 0, 0)
-        toggle_btn.clicked.connect(lambda checked: self._toggle_container(checked, container, toggle_btn))
-        layout.addWidget(container)
-        
-        try:
-            self.service.save_quote_ctc(QuoteID=quote_id)
-            rows = self.service.get_quote_ctc_list(quote_id)
-            if rows:
-                data = rows[0]
-                ctc_id = data[0]
-                
-                gst_input = QLineEdit(str(data[2]) if data[2] is not None else "")
-                freight_input = QLineEdit(str(data[3]) if data[3] is not None else "")
-                payment_input = QLineEdit(str(data[4]) if data[4] is not None else "")
-                warranty_input = QLineEdit(str(data[5]) if data[5] is not None else "")
-                validity_input = QLineEdit(str(data[6]) if data[6] is not None else "")
-                packing_input = QLineEdit(str(data[7]) if data[7] is not None else "")
-                inspection_input = QLineEdit(str(data[8]) if data[8] is not None else "")
-                delivery_input = QLineEdit(str(data[9]) if data[9] is not None else "")
-                bank_input = QLineEdit(str(data[10]) if data[10] is not None else "")
-                notes_input = QLineEdit(str(data[11]) if data[11] is not None else "")
-                
-                container_layout.addRow("GST / Taxes:", gst_input)
-                container_layout.addRow("Freight & Insurance:", freight_input)
-                container_layout.addRow("Payment:", payment_input)
-                container_layout.addRow("Warranty:", warranty_input)
-                container_layout.addRow("Validity:", validity_input)
-                container_layout.addRow("Packing:", packing_input)
-                container_layout.addRow("Inspection:", inspection_input)
-                container_layout.addRow("Delivery:", delivery_input)
-                container_layout.addRow("Bank Details:", bank_input)
-                container_layout.addRow("Notes:", notes_input)
-                
-                save_btn = QPushButton("💾 Save CTC")
-                save_btn.clicked.connect(lambda: self._save_ctc_form(
-                    ctc_id, gst_input, freight_input, payment_input, warranty_input, 
-                    validity_input, packing_input, inspection_input, delivery_input, 
-                    bank_input, notes_input
-                ))
-                container_layout.addRow("", save_btn)
-                
-            self.details_layout.addWidget(group)
-            return toggle_btn, container
-        except Exception as e:
-            container_layout.addRow(QLabel(f"Failed to load CTC: {e}"))
-            self.details_layout.addWidget(group)
-            return None, None
-
-    def _save_ctc_form(self, ctc_id, gst_input, freight_input, payment_input, warranty_input, validity_input, packing_input, inspection_input, delivery_input, bank_input, notes_input):
-        try:
-            self.service.update_quote_ctc_field(ctc_id, "GSTTax", gst_input.text())
-            self.service.update_quote_ctc_field(ctc_id, "FreightAndInsurance", freight_input.text())
-            self.service.update_quote_ctc_field(ctc_id, "Payment", payment_input.text())
-            self.service.update_quote_ctc_field(ctc_id, "Warranty", warranty_input.text())
-            self.service.update_quote_ctc_field(ctc_id, "Validity", validity_input.text())
-            self.service.update_quote_ctc_field(ctc_id, "Packing", packing_input.text())
-            self.service.update_quote_ctc_field(ctc_id, "Inspection", inspection_input.text())
-            self.service.update_quote_ctc_field(ctc_id, "Delivery", delivery_input.text())
-            self.service.update_quote_ctc_field(ctc_id, "BankDetails", bank_input.text())
-            self.service.update_quote_ctc_field(ctc_id, "Notes", notes_input.text())
-            QMessageBox.information(self, "Success", "CTC saved successfully.")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to save CTC: {e}")
-
-    def _add_common_specs_form(self, quote_id):
-        group = QGroupBox()
-        group.setStyleSheet("QGroupBox { border: 1px solid #cbd5e1; border-radius: 8px; margin-top: 10px; padding: 10px; }")
-        layout = QVBoxLayout(group)
-        
-        header = QHBoxLayout()
-        toggle_btn = QPushButton("▼")
-        toggle_btn.setFixedSize(24, 24)
-        toggle_btn.setCheckable(True)
-        toggle_btn.setChecked(True)
-        toggle_btn.setStyleSheet("font-weight: bold; border: none; background: transparent; color: #1e293b;")
-        
-        title_lbl = QLabel("<b>Common Specifications</b>")
-        title_lbl.setStyleSheet("border: none; font-size: 14px;")
-        
-        header.addWidget(toggle_btn)
-        header.addWidget(title_lbl)
-        header.addStretch()
-        layout.addLayout(header)
-
-        container = QWidget()
-        container_layout = QFormLayout(container)
-        container.setContentsMargins(0, 0, 0, 0)
-        toggle_btn.clicked.connect(lambda checked: self._toggle_container(checked, container, toggle_btn))
-        layout.addWidget(container)
-        
-        try:
-            self.service.save_common_specs(quote_id)
-            rows = self.service.get_common_specs_list(quote_id)
-            if rows:
-                data = rows[0]
-                spec_id = data[0]
-                
-                spec_labels = [
-                    "Voltage", "Phase", "Frequency", "System Earthing", "Short Circuit Level", "Ambient Temperature",
-                    "Degree of Protection", "Form of Separation", "Standard", "Panel Base Frame",
-                    "Cable Entry", "Color Shade", "Busbar System", "Earth Busbar"
-                ]
-                
-                inputs = []
-                for i, label in enumerate(spec_labels):
-                    val_index = i + 2
-                    val = str(data[val_index]) if val_index < len(data) and data[val_index] is not None else ""
-                    inp = QLineEdit(val)
-                    container_layout.addRow(label + ":", inp)
-                    inputs.append(inp)
-                
-                save_btn = QPushButton("💾 Save Common Specs")
-                save_btn.clicked.connect(lambda _, sid=spec_id, inps=inputs, lbls=spec_labels: self._save_common_specs_form(sid, inps, lbls))
-                container_layout.addRow("", save_btn)
-                
-            self.details_layout.addWidget(group)
-            return toggle_btn, container
-        except Exception as e:
-            container_layout.addRow(QLabel(f"Failed to load Common Specs: {e}"))
-            self.details_layout.addWidget(group)
-            return None, None
-
-    def _save_common_specs_form(self, spec_id, inputs, spec_labels):
-        try:
-            db_columns = [
-                "Voltage", "Phase", "Frequency", "SystemEarthing", "ShortCircuitLevel", "AmbientTemperature",
-                "DegreeOfProtection", "FormOfSeparation", "Standard", "PanelBaseFrame",
-                "CableEntry", "ColorShade", "BusbarSystem", "EarthBusbar"
-            ]
-            for i, col in enumerate(db_columns):
-                self.service.update_common_specs_field(spec_id, col, inputs[i].text())
-            QMessageBox.information(self, "Success", "Common Specs saved successfully.")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to save Common Specs: {e}")
-
-
-class CustomerViewDialog(QDialog):
-    def __init__(self, target_id, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Customer Record Viewer")
-        self.resize(1100, 700)
-        self.dsn = "PostgreSQL35W"
-        
-        layout = QVBoxLayout(self)
-        self.table = SearchableTable()
-        layout.addWidget(self.table)
-        
-        self.load_data(target_id)
-
-    def load_data(self, target_id):
-        try:
-            conn = pyodbc.connect(f"DSN={self.dsn};")
-            cursor = conn.cursor()
-            cursor.execute('SELECT * FROM public."tblCustomers" ORDER BY "ID"')
-            columns = [col[0] for col in cursor.description]
-            rows = cursor.fetchall()
-            conn.close()
-
-            self.table.setColumnCount(len(columns))
-            self.table.setHorizontalHeaderLabels(columns)
-            self.table.setRowCount(len(rows))
-
-            target_item = None
-            for r, row in enumerate(rows):
-                for c, val in enumerate(row):
-                    text = str(val) if val is not None else ""
-                    item = NumericTableWidgetItem(text)
-                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                    self.table.setItem(r, c, item)
-                    if c == 0 and str(val) == str(target_id):
-                        target_item = item
-
-            self.table.resizeColumnsToContents()
-            if target_item:
-                self.table.scrollToItem(target_item, QAbstractItemView.PositionAtCenter)
-                self.table.selectRow(target_item.row())
-        except Exception as e:
-            QMessageBox.critical(self, "Database Error", f"Failed to load customer details: {e}")

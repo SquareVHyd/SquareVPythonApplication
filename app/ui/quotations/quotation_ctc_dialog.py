@@ -6,6 +6,11 @@ from PySide6.QtCore import Qt, QTimer
 from app.services.quotation_service import QuotationService
 from app.ui.searchable_table import SearchableTable, NumericTableWidgetItem
 from app.utils.worker_thread import Worker
+from app.ui.quotations.panel_delegates import ComboBoxDelegate
+from app.ui.quotations.ctc_constants import (
+    GST_OPTIONS, FREIGHT_OPTIONS, PAYMENT_OPTIONS, WARRANTY_OPTIONS,
+    VALIDITY_OPTIONS, PACKING_OPTIONS, INSPECTION_OPTIONS, DELIVERY_OPTIONS
+)
 
 class QuotationCTCDialog(QDialog):
     """Dialog to manage Commercial Terms & Conditions (CTC) for a specific quotation in table format."""
@@ -55,6 +60,16 @@ class QuotationCTCDialog(QDialog):
         self.table.hideColumn(1)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.itemChanged.connect(self._handle_item_changed)
+        
+        self.table.setItemDelegateForColumn(2, ComboBoxDelegate(self, items=GST_OPTIONS, editable=True))
+        self.table.setItemDelegateForColumn(3, ComboBoxDelegate(self, items=FREIGHT_OPTIONS, editable=True))
+        self.table.setItemDelegateForColumn(4, ComboBoxDelegate(self, items=PAYMENT_OPTIONS, editable=True))
+        self.table.setItemDelegateForColumn(5, ComboBoxDelegate(self, items=WARRANTY_OPTIONS, editable=True))
+        self.table.setItemDelegateForColumn(6, ComboBoxDelegate(self, items=VALIDITY_OPTIONS, editable=True))
+        self.table.setItemDelegateForColumn(7, ComboBoxDelegate(self, items=PACKING_OPTIONS, editable=True))
+        self.table.setItemDelegateForColumn(8, ComboBoxDelegate(self, items=INSPECTION_OPTIONS, editable=True))
+        self.table.setItemDelegateForColumn(9, ComboBoxDelegate(self, items=DELIVERY_OPTIONS, editable=True))
+        
         layout.addWidget(self.table)
         
         self.status_bar = QStatusBar()

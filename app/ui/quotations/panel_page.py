@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
     QLineEdit, QLabel, QAbstractItemView, QMessageBox, QStatusBar, QDialog,
-    QTextEdit, QComboBox, QMenu, QSplitter, QTabWidget, QGroupBox
+    QTextEdit, QComboBox, QMenu, QSplitter, QTabWidget, QGroupBox, QFrame
 )
 from PySide6.QtCore import Qt, QTimer, QEvent, QPoint
 from PySide6.QtGui import QShortcut, QKeySequence, QAction, QColor
@@ -108,6 +108,63 @@ class SteelSelectorWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
+        # --- Calculation Block (Moved to Top) ---
+        calc_frame = QFrame()
+        calc_frame.setStyleSheet("QFrame { background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; }")
+        calc_layout = QHBoxLayout(calc_frame)
+        calc_layout.setContentsMargins(15, 10, 15, 10)
+        
+        self.unit_cost_input = QLineEdit()
+        self.unit_cost_input.setPlaceholderText("Unit Cost (₹)")
+        self.unit_cost_input.setFixedWidth(100)
+        self.unit_cost_input.setStyleSheet("padding: 4px; border: 1px solid #94a3b8; border-radius: 4px; background-color: white;")
+        
+        default_steel_cost = self.service.get_steel_unit_cost()
+        if default_steel_cost > 0:
+            self.unit_cost_input.setText(str(default_steel_cost))
+        
+        calc_btn = QPushButton("⚡ Calculate Cost")
+        calc_btn.setStyleSheet("background-color: #3b82f6; color: white; font-weight: bold; padding: 5px 15px; border-radius: 4px; border: none;")
+        calc_btn.clicked.connect(self.calculate_steel_cost)
+        
+        self.panel_wt_lbl = QLabel("Panel Weight: 0.00 kg")
+        self.panel_wt_lbl.setStyleSheet("border: none; background: transparent; color: #334155;")
+        
+        self.wastage_wt_lbl = QLabel("Wastage Weight: 0.00 kg")
+        self.wastage_wt_lbl.setStyleSheet("border: none; background: transparent; color: #334155;")
+        
+        self.total_wt_lbl = QLabel("Total Weight: 0.00 kg")
+        self.total_wt_lbl.setStyleSheet("border: none; background: transparent; font-weight: bold; color: #0f172a;")
+        
+        self.cost_lbl = QLabel("Total Cost: ₹0.00")
+        self.cost_lbl.setStyleSheet("border: none; background: transparent; font-weight: bold; color: #dc2626; font-size: 14px;")
+        
+        unit_lbl = QLabel("<b>Unit Cost/kg:</b>")
+        unit_lbl.setStyleSheet("border: none; background: transparent; color: #334155;")
+        
+        calc_layout.addWidget(unit_lbl)
+        calc_layout.addWidget(self.unit_cost_input)
+        calc_layout.addWidget(calc_btn)
+        calc_layout.addStretch()
+        
+        sep1 = QLabel(" | ")
+        sep1.setStyleSheet("border: none; background: transparent; color: #94a3b8;")
+        sep2 = QLabel(" | ")
+        sep2.setStyleSheet("border: none; background: transparent; color: #94a3b8;")
+        sep3 = QLabel(" | ")
+        sep3.setStyleSheet("border: none; background: transparent; color: #94a3b8;")
+        
+        calc_layout.addWidget(self.panel_wt_lbl)
+        calc_layout.addWidget(sep1)
+        calc_layout.addWidget(self.wastage_wt_lbl)
+        calc_layout.addWidget(sep2)
+        calc_layout.addWidget(self.total_wt_lbl)
+        calc_layout.addWidget(sep3)
+        calc_layout.addWidget(self.cost_lbl)
+        
+        layout.addWidget(calc_frame)
+        
+        # --- Steel Table ---
         self.table = SearchableTable()
         self.table.setColumnCount(19)
         self.table.setHorizontalHeaderLabels([
@@ -121,45 +178,16 @@ class SteelSelectorWidget(QWidget):
         layout.addWidget(self.table)
         
         self._setup_delegates()
+        
+        # --- Save Button ---
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
         self.btn_save = QPushButton("💾 Save Steel Specification")
-        self.btn_save.setStyleSheet("background-color: #2e7d32; color: white; font-weight: bold; padding: 8px;")
+        self.btn_save.setFixedWidth(250)
+        self.btn_save.setStyleSheet("background-color: #10b981; color: white; font-weight: bold; padding: 10px; border-radius: 6px; border: none;")
         self.btn_save.clicked.connect(self.save_data)
-        layout.addWidget(self.btn_save)
-
-        # Calculation block
-        calc_layout = QHBoxLayout()
-        self.unit_cost_input = QLineEdit()
-        self.unit_cost_input.setPlaceholderText("Unit Cost (₹)")
-        self.unit_cost_input.setMaximumWidth(100)
-        
-        default_steel_cost = self.service.get_steel_unit_cost()
-        if default_steel_cost > 0:
-            self.unit_cost_input.setText(str(default_steel_cost))
-        
-        calc_btn = QPushButton("Calculate Cost")
-        calc_btn.clicked.connect(self.calculate_steel_cost)
-        
-        self.panel_wt_lbl = QLabel("Panel Weight: 0.00 kg")
-        self.wastage_wt_lbl = QLabel("Wastage Weight: 0.00 kg")
-        self.total_wt_lbl = QLabel("Total Weight: 0.00 kg")
-        self.total_wt_lbl.setStyleSheet("font-weight: bold;")
-        
-        self.cost_lbl = QLabel("Total Cost: ₹0.00")
-        self.cost_lbl.setStyleSheet("font-weight: bold; color: #dc2626;")
-        
-        calc_layout.addWidget(QLabel("Unit Cost/kg:"))
-        calc_layout.addWidget(self.unit_cost_input)
-        calc_layout.addWidget(calc_btn)
-        calc_layout.addStretch()
-        calc_layout.addWidget(self.panel_wt_lbl)
-        calc_layout.addWidget(QLabel(" | "))
-        calc_layout.addWidget(self.wastage_wt_lbl)
-        calc_layout.addWidget(QLabel(" | "))
-        calc_layout.addWidget(self.total_wt_lbl)
-        calc_layout.addWidget(QLabel(" | "))
-        calc_layout.addWidget(self.cost_lbl)
-        
-        layout.addLayout(calc_layout)
+        btn_layout.addWidget(self.btn_save)
+        layout.addLayout(btn_layout)
 
     def load_data(self, panel_id, p_len=0.0, p_hgt=0.0, p_dep=0.0, p_waste=0.0):
         self.panel_id = panel_id
@@ -473,6 +501,12 @@ class PanelPage(QWidget):
         self.delete_btn = QPushButton("🗑️ Delete")
         self.delete_btn.clicked.connect(self.delete_panel)
 
+        self.copy_btn = QPushButton("📋 Copy")
+        self.copy_btn.clicked.connect(self.copy_panel)
+        
+        self.paste_btn = QPushButton("📋 Paste")
+        self.paste_btn.clicked.connect(self.paste_panel)
+
         header.addWidget(self.back_btn)
         header.addWidget(self.title_label)
         header.addStretch()
@@ -480,6 +514,8 @@ class PanelPage(QWidget):
         header.addWidget(self.add_btn)
         header.addWidget(self.edit_btn)
         header.addWidget(self.delete_btn)
+        header.addWidget(self.copy_btn)
+        header.addWidget(self.paste_btn)
         layout.addLayout(header)
 
         self.splitter = QSplitter(Qt.Vertical)
@@ -647,17 +683,52 @@ class PanelPage(QWidget):
             self.refresh_table()
 
     def delete_panel(self):
-        indexes = self.table.selectionModel().selectedIndexes()
-        if not indexes: return
+        selected = self.table.selectionModel().selectedRows()
+        if not selected:
+            QMessageBox.warning(self, "Selection Required", "Please select panel(s) to delete.")
+            return
+
+        if QMessageBox.question(self, "Confirm Delete", 
+                               f"Are you sure you want to delete {len(selected)} panel(s)?",
+                               QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
+            try:
+                for index in selected:
+                    pid = int(self.table.item(index.row(), 0).text())
+                    self.service.delete_panel(pid)
+                QMessageBox.information(self, "Deleted", "Panel(s) removed successfully.")
+                self.refresh_table()
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to delete: {e}")
+
+    def copy_panel(self):
+        selected = self.table.selectionModel().selectedRows()
+        if not selected:
+            QMessageBox.warning(self, "Selection Required", "Please select a panel to copy.")
+            return
+        row = selected[0].row()
+        panel_id = int(self.table.item(row, 0).text())
+        panel_name = self.table.item(row, 4).text()
         
-        # Get unique rows from selected cells
-        rows_to_delete = sorted(list(set(idx.row() for idx in indexes)), reverse=True)
-        
-        if QMessageBox.question(self, "Confirm", f"Delete {len(rows_to_delete)} selected panel(s)?") == QMessageBox.Yes:
-            for row in rows_to_delete:
-                panel_id = int(self.table.item(row, 0).text())
-                self.service.delete_panel(panel_id)
+        self.service.clipboard["type"] = "panel"
+        self.service.clipboard["id"] = panel_id
+        self.service.clipboard["name"] = panel_name
+        QMessageBox.information(self, "Copied", f"Panel '{panel_name}' copied to clipboard.")
+
+    def paste_panel(self):
+        if not self.quote_id:
+            QMessageBox.warning(self, "Error", "No quotation selected.")
+            return
+            
+        if self.service.clipboard.get("type") != "panel" or not self.service.clipboard.get("id"):
+            QMessageBox.warning(self, "Clipboard Empty", "No panel in clipboard to paste.")
+            return
+            
+        try:
+            self.service.copy_panel(self.service.clipboard["id"], self.quote_id)
+            QMessageBox.information(self, "Pasted", "Panel pasted successfully.")
             self.refresh_table()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to paste panel: {e}")
 
     def _handle_item_changed(self, item):
         """Handles inline updates when a table cell is edited."""

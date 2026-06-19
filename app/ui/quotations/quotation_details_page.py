@@ -51,18 +51,18 @@ class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
             "Ctrl+P - Export PDF"
         )
 
-        self.quotations_btn = QPushButton("📄 Quotations")
+        self.quotations_btn = QPushButton("📄 Quotations List")
         self.quotations_btn.clicked.connect(self.show_quotations)
         self.quotations_btn.setToolTip(self.shortcuts_tip)
+
+        self.preview_btn = QPushButton("📑 Quotation Process")
+        self.preview_btn.clicked.connect(self.show_preview)
+        self.preview_btn.setToolTip("View and Manage the entire quotation hierarchy")
 
         self.revision_btn = QPushButton("🔄 Revisions")
         self.revision_btn.clicked.connect(self.show_revision)
         self.revision_btn.setToolTip("Manage quotation revisions")
         self.revision_btn.setEnabled(False)
-
-        self.preview_btn = QPushButton("📑 Quotation Preview")
-        self.preview_btn.clicked.connect(self.show_preview)
-        self.preview_btn.setToolTip("View and Manage the entire quotation hierarchy")
 
         self.panels_btn = QPushButton("🔌 Panels")
         self.panels_btn.clicked.connect(self.show_panels)
@@ -74,18 +74,18 @@ class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
         self.panel_modules_btn.setToolTip("Manage modules for all panels in this quotation")
         self.panel_modules_btn.setEnabled(False)
 
-        self.items_btn = QPushButton("📦 Items")
+        self.items_btn = QPushButton("📦 Used Quantity")
         self.items_btn.clicked.connect(self.show_items)
         self.items_btn.setToolTip("View all module items for the selected quotation")
         self.items_btn.setEnabled(False)
 
         sidebar_layout.addWidget(title)
         sidebar_layout.addWidget(self.quotations_btn)
+        sidebar_layout.addWidget(self.preview_btn)
         sidebar_layout.addWidget(self.revision_btn)
         sidebar_layout.addWidget(self.panels_btn)
         sidebar_layout.addWidget(self.panel_modules_btn)
         sidebar_layout.addWidget(self.items_btn)
-        sidebar_layout.addWidget(self.preview_btn)
         sidebar_layout.addStretch()
 
         # Close button to return to main ERP (now switches back to dashboard)

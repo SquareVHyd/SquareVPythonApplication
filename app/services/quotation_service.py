@@ -865,3 +865,236 @@ class QuotationService:
             except Exception as e:
                 print(f"Error fetching steel unit cost: {e}")
                 return 0.0
+
+    def copy_module_items(self, old_module_type_id, new_module_type_id, session=None):
+        def _execute(sess):
+            result = sess.execute(
+                text('SELECT * FROM public."tbl_ModuleItems" WHERE "ID" = :old_id'),
+                {"old_id": old_module_type_id}
+            )
+            items = [dict(r._mapping) for r in result.fetchall()]
+            
+            for item in items:
+                desc = item.get("DriveDescription")
+                old_bom = item.get("BOM")
+                selection = item.get("Selection", "Selected")
+                
+                price_res = sess.execute(
+                    text('SELECT "ListPrice", "DiscountPercent" FROM public."vwPriceList" WHERE "ItemDescription" = :desc'),
+                    {"desc": desc}
+                ).fetchone()
+                
+                lp = float(price_res[0]) if price_res and price_res[0] else float(item.get("LP", 0))
+                disc = float(price_res[1]) if price_res and price_res[1] else float(item.get("%Discount", 0))
+                
+                sess.execute(
+                    text("""INSERT INTO public."tbl_ModuleItems" 
+                            ("ID", "DriveDescription", "BOM", "LP", "%Discount", "Selection") 
+                            VALUES (:id, :desc, :bom, :lp, :disc, :sel)"""),
+                    {"id": new_module_type_id, "desc": desc, "bom": old_bom, "lp": lp, "disc": disc, "sel": selection}
+                )
+
+        if session:
+            _execute(session)
+        else:
+            with get_session() as new_session:
+                try:
+                    _execute(new_session)
+                    new_session.commit()
+                except Exception as e:
+                    new_session.rollback()
+                    raise e
+
+    def copy_panel_module(self, module_id, target_panel_id, session=None):
+        def _execute(sess):
+            old_mod = sess.execute(
+                text('SELECT * FROM public."tbl_PanelModules" WHERE "ID" = :id'),
+                {"id": module_id}
+            ).fetchone()
+            if not old_mod: return
+            old_mod = dict(old_mod._mapping)
+            
+            old_type_id = old_mod.get("ModuleTypeID")
+            new_type_id = None
+            if old_type_id:
+                old_type_name_res = sess.execute(
+                    text('SELECT "Pnl_Module_Type" FROM public."tbl_PnlModuleType" WHERE "ID" = :id'),
+                    {"id": old_type_id}
+                ).fetchone()
+                old_type_name = old_type_name_res[0] if old_type_name_res else "Copied Module"
+                new_type_name = f"{old_type_name} (Copy)"
+                
+                new_type_res = sess.execute(
+                    text('INSERT INTO public."tbl_PnlModuleType" ("Pnl_Module_Type") VALUES (:name) RETURNING "ID"'), 
+                    {"name": new_type_name}
+                )
+                new_type_id = new_type_res.fetchone()[0]
+                
+                self.copy_module_items(old_type_id, new_type_id, sess)
+            
+            query = text("""
+                INSERT INTO public."tbl_PanelModules" (
+                    "PanelID", "IngOg", "PanelModQty", "ModuleTypeID", "ModPole",
+                    "ModKa", "Release", "Protection", "Remark"
+                ) VALUES (:pid, :ingog, :qty, :typeid, :pole, :ka, :release, :prot, :rem) RETURNING "ID"
+            """)
+            sess.execute(query, {
+                "pid": target_panel_id,
+                "ingog": old_mod.get("IngOg"),
+                "qty": old_mod.get("PanelModQty"),
+                "typeid": new_type_id,
+                "pole": old_mod.get("ModPole"),
+                "ka": old_mod.get("ModKa"),
+                "release": old_mod.get("Release"),
+                "prot": old_mod.get("Protection"),
+                "rem": old_mod.get("Remark")
+            })
+
+        if session:
+            _execute(session)
+        else:
+            with get_session() as new_session:
+                try:
+                    _execute(new_session)
+                    new_session.commit()
+                except Exception as e:
+                    new_session.rollback()
+                    raise e
+
+    def copy_panel(self, panel_id, target_quote_id, session=None):
+        def _execute(sess):
+            old_panel = sess.execute(text('SELECT * FROM public."tbl_Panels" WHERE "ID" = :id'), {"id": panel_id}).fetchone()
+            if not old_panel: return
+            old_panel = dict(old_panel._mapping)
+            
+            new_name = f"{old_panel.get('PanelName', 'Panel')}_copy"
+            
+            new_panel_res = sess.execute(text("""
+                INSERT INTO public."tbl_Panels" (
+                    "QuoteID", "PanelCategory", "PanelSerial", "PanelName", "PanelQty",
+                    "LengthXmm", "HeightYmm", "DepthZmm", "AddWaste", "PanelKARating",
+                    "EarthRuns", "StandRequired", "BusbarMaterial"
+                ) VALUES (:qid, :cat, :ser, :name, :qty, :l, :h, :d, :w, :ka, :e, :st, :bb) RETURNING "ID"
+            """), {
+                "qid": target_quote_id, "cat": old_panel.get("PanelCategory"), "ser": old_panel.get("PanelSerial"),
+                "name": new_name, "qty": old_panel.get("PanelQty"), "l": old_panel.get("LengthXmm"),
+                "h": old_panel.get("HeightYmm"), "d": old_panel.get("DepthZmm"), "w": old_panel.get("AddWaste"),
+                "ka": old_panel.get("PanelKARating"), "e": old_panel.get("EarthRuns"), "st": old_panel.get("StandRequired"),
+                "bb": old_panel.get("BusbarMaterial")
+            })
+            new_panel_id = new_panel_res.fetchone()[0]
+            
+            old_steel = sess.execute(text('SELECT * FROM public."tbl_PanelSteel" WHERE "PanelID" = :id'), {"id": panel_id}).fetchone()
+            if old_steel:
+                old_s = dict(old_steel._mapping)
+                sess.execute(text("""
+                    INSERT INTO public."tbl_PanelSteel" (
+                        "PanelID", "FrontBackQty", "FrontBackSteelSize", "SidesQty", "SidesSteelSize",
+                        "BottomTopQty", "BottomSteelSize", "TypeOfSeating", "Canopy", "CableEntry",
+                        "Mounting", "DoubleDoor", "DrawoutFixed", "IndoorOutdoor", "PanelFace", "ProtectionClass",
+                        "SeatStand", "StandMetalSize"
+                    ) VALUES (:pid, :fbq, :fbs, :sq, :ss, :btq, :bts, :tos, :c, :ce, :m, :dd, :df, :io, :pf, :pc, :sts, :sms)
+                """), {
+                    "pid": new_panel_id, "fbq": old_s.get("FrontBackQty"), "fbs": old_s.get("FrontBackSteelSize"),
+                    "sq": old_s.get("SidesQty"), "ss": old_s.get("SidesSteelSize"), "btq": old_s.get("BottomTopQty"),
+                    "bts": old_s.get("BottomSteelSize"), "tos": old_s.get("TypeOfSeating"), "c": old_s.get("Canopy"),
+                    "ce": old_s.get("CableEntry"), "m": old_s.get("Mounting"), "dd": old_s.get("DoubleDoor"),
+                    "df": old_s.get("DrawoutFixed"), "io": old_s.get("IndoorOutdoor"), "pf": old_s.get("PanelFace"),
+                    "pc": old_s.get("ProtectionClass"), "sts": old_s.get("SeatStand"), "sms": old_s.get("StandMetalSize")
+                })
+                
+            old_bb = sess.execute(text('SELECT * FROM public."tbl_PanelBB" WHERE "PanelID" = :id'), {"id": panel_id}).fetchone()
+            if old_bb:
+                old_b = dict(old_bb._mapping)
+                sess.execute(text("""
+                    INSERT INTO public."tbl_PanelBB" (
+                        "PanelID", "NeutralRating", "BusSection", "BusSectionQty", "AmpsRequested",
+                        "AmpsSelected", "BusbarClearence", "BB_QtyPH", "BB_QtyNu", "BB_QtyEarth",
+                        "Select_BB_Phase", "Select_BB_Neutral", "Select_BB_Earth"
+                    ) VALUES (:pid, :nr, :bs, :bsq, :ar, :ase, :bc, :qp, :qn, :qe, :sp, :sn, :se)
+                """), {
+                    "pid": new_panel_id, "nr": old_b.get("NeutralRating"), "bs": old_b.get("BusSection"),
+                    "bsq": old_b.get("BusSectionQty"), "ar": old_b.get("AmpsRequested"), "ase": old_b.get("AmpsSelected"),
+                    "bc": old_b.get("BusbarClearence"), "qp": old_b.get("BB_QtyPH"), "qn": old_b.get("BB_QtyNu"),
+                    "qe": old_b.get("BB_QtyEarth"), "sp": old_b.get("Select_BB_Phase"), "sn": old_b.get("Select_BB_Neutral"),
+                    "se": old_b.get("Select_BB_Earth")
+                })
+
+            modules = sess.execute(text('SELECT "ID" FROM public."tbl_PanelModules" WHERE "PanelID" = :id'), {"id": panel_id}).fetchall()
+            
+            for mod in modules:
+                self.copy_panel_module(mod[0], new_panel_id, sess)
+
+        if session:
+            _execute(session)
+        else:
+            with get_session() as new_session:
+                try:
+                    _execute(new_session)
+                    new_session.commit()
+                except Exception as e:
+                    new_session.rollback()
+                    raise e
+
+    def copy_quotation(self, quote_id, session=None):
+        def _execute(sess):
+            old_quote = sess.execute(text('SELECT * FROM public."tbl_QuoteMain" WHERE "ID" = :id'), {"id": quote_id}).fetchone()
+            if not old_quote: return
+            old_q = dict(old_quote._mapping)
+            
+            new_project_name = f"{old_q.get('QuoteProjectName', 'Project')}_copy"
+            
+            res = sess.execute(text("""
+                INSERT INTO public."tbl_QuoteMain" (
+                    "CustomerId", "DateOfRequest", "Date_Quote", "QuoteRereceNo", 
+                    "QuoteSubject", "QuoteProjectName", "CustomerContactID", "PreparedBy", "QuoteStatus"
+                ) VALUES (:cid, :dr, :dq, :qr, :qs, :qp, :ccid, :pb, :stat) RETURNING "ID"
+            """), {
+                "cid": old_q.get("CustomerId"), "dr": old_q.get("DateOfRequest"), "dq": old_q.get("Date_Quote"),
+                "qr": old_q.get("QuoteRereceNo"), "qs": old_q.get("QuoteSubject"), "qp": new_project_name,
+                "ccid": old_q.get("CustomerContactID"), "pb": old_q.get("PreparedBy"), "stat": old_q.get("QuoteStatus")
+            })
+            new_quote_id = res.fetchone()[0]
+            
+            old_ctc = sess.execute(text('SELECT * FROM public."tbl_QuoteCTC" WHERE "QuoteID" = :id'), {"id": quote_id}).fetchone()
+            if old_ctc:
+                old_c = dict(old_ctc._mapping)
+                sess.execute(text("""
+                    INSERT INTO public."tbl_QuoteCTC" (
+                        "QuoteID", "GSTTax", "FreightAndInsurance", "Payment", "Warranty", "Validity", 
+                        "Packing", "Inspection", "Delivery", "BankDetails", "Notes"
+                    ) VALUES (:qid, :g, :f, :p, :w, :v, :pack, :i, :d, :b, :n)
+                """), {
+                    "qid": new_quote_id, "g": old_c.get("GSTTax"), "f": old_c.get("FreightAndInsurance"),
+                    "p": old_c.get("Payment"), "w": old_c.get("Warranty"), "v": old_c.get("Validity"),
+                    "pack": old_c.get("Packing"), "i": old_c.get("Inspection"), "d": old_c.get("Delivery"),
+                    "b": old_c.get("BankDetails"), "n": old_c.get("Notes")
+                })
+            
+            old_specs = sess.execute(text('SELECT * FROM public."tbl_QuoteCommonSpecs" WHERE "QuoteID" = :id'), {"id": quote_id}).fetchone()
+            if old_specs:
+                old_s = dict(old_specs._mapping)
+                cols = [c for c in old_s.keys() if c != "ID" and c != "QuoteID"]
+                if cols:
+                    col_str = ", ".join([f'"{c}"' for c in cols])
+                    val_str = ", ".join([f':{c}' for c in cols])
+                    sess.execute(text(f"""
+                        INSERT INTO public."tbl_QuoteCommonSpecs" ("QuoteID", {col_str})
+                        VALUES (:qid, {val_str})
+                    """), {**old_s, "qid": new_quote_id})
+            
+            panels = sess.execute(text('SELECT "ID" FROM public."tbl_Panels" WHERE "QuoteID" = :id'), {"id": quote_id}).fetchall()
+            
+            for p in panels:
+                self.copy_panel(p[0], new_quote_id, sess)
+
+        if session:
+            _execute(session)
+        else:
+            with get_session() as new_session:
+                try:
+                    _execute(new_session)
+                    new_session.commit()
+                except Exception as e:
+                    new_session.rollback()
+                    raise e

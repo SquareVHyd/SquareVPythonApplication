@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QTextEdit, QComboBox, QMenu, QSplitter, QTabWidget, QGroupBox
 )
 from PySide6.QtCore import Qt, QTimer, QEvent, QPoint
-from PySide6.QtGui import QShortcut, QKeySequence, QAction
+from PySide6.QtGui import QShortcut, QKeySequence, QAction, QColor
 import operator # For evaluating expressions
 
 
@@ -132,11 +132,17 @@ class SteelSelectorWidget(QWidget):
         self.unit_cost_input.setPlaceholderText("Unit Cost (₹)")
         self.unit_cost_input.setMaximumWidth(100)
         
+        default_steel_cost = self.service.get_steel_unit_cost()
+        if default_steel_cost > 0:
+            self.unit_cost_input.setText(str(default_steel_cost))
+        
         calc_btn = QPushButton("Calculate Cost")
         calc_btn.clicked.connect(self.calculate_steel_cost)
         
-        self.weight_lbl = QLabel("Total Weight: 0.00 kg")
-        self.weight_lbl.setStyleSheet("font-weight: bold;")
+        self.panel_wt_lbl = QLabel("Panel Weight: 0.00 kg")
+        self.wastage_wt_lbl = QLabel("Wastage Weight: 0.00 kg")
+        self.total_wt_lbl = QLabel("Total Weight: 0.00 kg")
+        self.total_wt_lbl.setStyleSheet("font-weight: bold;")
         
         self.cost_lbl = QLabel("Total Cost: ₹0.00")
         self.cost_lbl.setStyleSheet("font-weight: bold; color: #dc2626;")
@@ -145,18 +151,30 @@ class SteelSelectorWidget(QWidget):
         calc_layout.addWidget(self.unit_cost_input)
         calc_layout.addWidget(calc_btn)
         calc_layout.addStretch()
-        calc_layout.addWidget(self.weight_lbl)
+        calc_layout.addWidget(self.panel_wt_lbl)
+        calc_layout.addWidget(QLabel(" | "))
+        calc_layout.addWidget(self.wastage_wt_lbl)
+        calc_layout.addWidget(QLabel(" | "))
+        calc_layout.addWidget(self.total_wt_lbl)
+        calc_layout.addWidget(QLabel(" | "))
         calc_layout.addWidget(self.cost_lbl)
         
         layout.addLayout(calc_layout)
 
-    def load_data(self, panel_id, p_len=0.0, p_hgt=0.0, p_dep=0.0):
+    def load_data(self, panel_id, p_len=0.0, p_hgt=0.0, p_dep=0.0, p_waste=0.0):
         self.panel_id = panel_id
         self.p_len = p_len
         self.p_hgt = p_hgt
         self.p_dep = p_dep
+        self.p_waste = p_waste
+        
+        default_steel_cost = self.service.get_steel_unit_cost()
+        if default_steel_cost > 0:
+            self.unit_cost_input.setText(str(default_steel_cost))
+            
         if not panel_id:
             self.table.setRowCount(0)
+            self.calculate_weights()
             return
 
         self.table.blockSignals(True)
@@ -174,6 +192,7 @@ class SteelSelectorWidget(QWidget):
                 self.table.setItem(r, c, item)
         self.table.resizeColumnsToContents()
         self.table.blockSignals(False)
+        self.calculate_weights()
 
     def save_data(self):
         if not self.panel_id or self.table.rowCount() == 0:
@@ -219,8 +238,12 @@ class SteelSelectorWidget(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "Save Error", f"Failed to save record: {e}")
 
-    def calculate_steel_cost(self):
+    def calculate_weights(self):
         if self.table.rowCount() == 0:
+            self.current_total_wt = 0.0
+            self.panel_wt_lbl.setText("Panel Weight: 0.00 kg")
+            self.wastage_wt_lbl.setText("Wastage Weight: 0.00 kg")
+            self.total_wt_lbl.setText("Total Weight: 0.00 kg")
             return
         
         try:
@@ -249,19 +272,38 @@ class SteelSelectorWidget(QWidget):
             
             # Dimensions are in mm, volume in m^3 -> multiply by 1e-9
             # Multiplied by 2 because each category represents a pair of sheets (Front/Back, Bottom/Top, Left/Right Sides)
-            fb_wt = fb_t * self.p_hgt * self.p_len * density * 1e-9 * fb_qty * 2
-            bt_wt = bt_t * self.p_len * self.p_dep * density * 1e-9 * bt_qty * 2
-            sides_wt = sides_t * self.p_dep * self.p_hgt * density * 1e-9 * sides_qty * 2
+            fb_wt = fb_t * self.p_hgt * self.p_len * density * 1e-9 * fb_qty 
+            bt_wt = bt_t * self.p_len * self.p_dep * density * 1e-9 * bt_qty 
+            sides_wt = sides_t * self.p_dep * self.p_hgt * density * 1e-9 * sides_qty
             
-            total_wt = fb_wt + bt_wt + sides_wt
-            self.weight_lbl.setText(f"Total Weight: {total_wt:.2f} kg")
+            panel_wt = fb_wt + bt_wt + sides_wt
             
+            if hasattr(self, 'p_waste') and self.p_waste > 0 and self.p_waste < 100:
+                total_wt = panel_wt * 100.0 / (100.0 - self.p_waste)
+                wastage_wt = total_wt - panel_wt
+            else:
+                total_wt = panel_wt
+                wastage_wt = 0.0
+                
+            self.panel_wt_lbl.setText(f"Panel Weight: {panel_wt:.2f} kg")
+            self.wastage_wt_lbl.setText(f"Wastage Weight: {wastage_wt:.2f} kg")
+            self.total_wt_lbl.setText(f"Total Weight: {total_wt:.2f} kg")
+            self.current_total_wt = total_wt
+            
+        except Exception as e:
+            print(f"Weight calculation error: {e}")
+
+    def calculate_steel_cost(self):
+        if not hasattr(self, 'current_total_wt'):
+            self.calculate_weights()
+            
+        try:
             unit_cost = float(self.unit_cost_input.text() or 0)
-            total_cost = total_wt * unit_cost
+            total_cost = getattr(self, 'current_total_wt', 0.0) * unit_cost
             self.cost_lbl.setText(f"Total Cost: ₹{total_cost:,.2f}")
             
         except Exception as e:
-            QMessageBox.critical(self, "Calculation Error", f"Failed to calculate: {e}")
+            QMessageBox.critical(self, "Calculation Error", f"Failed to calculate cost: {e}")
 
     def _setup_delegates(self):
         from app.ui.quotations.panel_delegates import ComboBoxDelegate
@@ -303,6 +345,9 @@ class SteelSelectorWidget(QWidget):
                 except ValueError:
                     val = "0"
                 item.setText(str(val))
+            item.setBackground(QColor(255, 255, 204)) # Light yellow
+            self.calculate_weights()
+
         finally:
             self.table.blockSignals(False)
 
@@ -579,8 +624,9 @@ class PanelPage(QWidget):
             p_len = get_dim(6)
             p_hgt = get_dim(7)
             p_dep = get_dim(8)
+            p_waste = get_dim(9)
 
-            self.steel_widget.load_data(panel_id, p_len, p_hgt, p_dep)
+            self.steel_widget.load_data(panel_id, p_len, p_hgt, p_dep, p_waste)
             self.bb_widget.load_data(panel_id)
 
     def add_panel(self):
@@ -666,6 +712,8 @@ class PanelPage(QWidget):
                     return
 
             self.service.update_panel_field(panel_id, db_column_name, new_value)
+            
+            item.setBackground(QColor(255, 255, 204)) # Light yellow
             
             # Update local cache to keep it in sync with the UI
             for i, cached_row in enumerate(self._cache):

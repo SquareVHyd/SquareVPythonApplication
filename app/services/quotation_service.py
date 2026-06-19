@@ -3,6 +3,8 @@ from sqlalchemy import text
 from app.config.database import get_session
 
 class QuotationService:
+    clipboard = {"type": None, "id": None, "name": None}
+
     def __init__(self):
         pass
 
@@ -851,3 +853,15 @@ class QuotationService:
                 session.rollback()
                 print(f"Error updating full panel BB config: {e}")
                 raise
+
+    def get_steel_unit_cost(self):
+        """Fetches the unit cost for steel from tbl_bb_metalproperties."""
+        query = text("SELECT unitkgcost FROM public.tbl_bb_metalproperties WHERE LOWER(metal) LIKE '%steel%' LIMIT 1")
+        with get_session() as session:
+            try:
+                result = session.execute(query)
+                row = result.fetchone()
+                return float(row[0]) if row and row[0] is not None else 0.0
+            except Exception as e:
+                print(f"Error fetching steel unit cost: {e}")
+                return 0.0

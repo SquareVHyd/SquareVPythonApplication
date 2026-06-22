@@ -80,10 +80,11 @@ class QuotationPage(QWidget):
         # Table
         self.table = SearchableTable()
         self.table.setStyleSheet("QTableView { selection-background-color: #93c5fd; selection-color: #000000; }") # Keep existing style
-        self.table.setColumnCount(11) # Increased by 1 for CustomerId
+        self.table.setColumnCount(14) # Increased by 1 for CustomerId and 3 for Metal Costs
         self.table.setHorizontalHeaderLabels([
             "ID", "Customer ID", "Customer", "Req. Date", "Quote Date", "Ref No", 
-            "Subject", "Project", "Contact", "Prepared By", "Status"
+            "Subject", "Project", "Contact", "Prepared By", "Status",
+            "Steel Cost", "Alum Cost", "Copper Cost"
         ])
         self.table.hideColumn(0) # Hide Quote ID
         self.table.hideColumn(1) # Hide Customer ID
@@ -97,8 +98,11 @@ class QuotationPage(QWidget):
         # Track selection to enable/disable Panels button
         self.table.itemSelectionChanged.connect(self._on_selection_changed)
 
-        # Double click to edit
+        # Double click to edit entire quotation
         self.table.itemDoubleClicked.connect(self.edit_quotation)
+        
+        # Inline edit handler for metal costs
+        self.table.itemChanged.connect(self._on_item_changed)
         
         layout.addWidget(self.table)
 
@@ -252,11 +256,47 @@ class QuotationPage(QWidget):
             for c in range(len(row)):
                 val = str(row[c]) if row[c] is not None else ""
                 item = NumericTableWidgetItem(val)
-                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                if c in (11, 12, 13):
+                    item.setFlags(item.flags() | Qt.ItemIsEditable)
+                    item.setBackground(Qt.yellow)  # Highlight editable cells slightly
+                else:
+                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
                 self.table.setItem(r, c, item)
         self.table.setSortingEnabled(True)
         self.table.blockSignals(False)
         self.table.resizeColumnsToContents()
+
+    def _on_item_changed(self, item):
+        col = item.column()
+        if col not in (11, 12, 13): return
+        
+        row = item.row()
+        quote_id_item = self.table.item(row, 0)
+        if not quote_id_item: return
+        
+        try:
+            quote_id = int(quote_id_item.text())
+            new_val = float(item.text().strip())
+        except ValueError:
+            return  # invalid input, ignore or could revert
+            
+        metal_col_map = {11: "Steel", 12: "Aluminium", 13: "Copper"}
+        metal_name = metal_col_map[col]
+        
+        try:
+            self.service.update_metal_cost_in_quote(quote_id, metal_name, new_val)
+            # Update cache so search doesn't revert it
+            for r in self._cache:
+                if str(r[0]) == str(quote_id):
+                    # tuples are immutable, convert to list, update, convert back
+                    r_list = list(r)
+                    r_list[col] = new_val
+                    # need to replace in cache
+                    idx = self._cache.index(r)
+                    self._cache[idx] = tuple(r_list)
+                    break
+        except Exception as e:
+            QMessageBox.critical(self, "Save Error", f"Failed to save {metal_name} cost: {e}")
 
     def _debounce_search(self):
         self._search_timer.start(300)

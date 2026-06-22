@@ -104,6 +104,7 @@ class SteelSelectorWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.panel_id = None
+        self.quote_id = None
         self.service = QuotationService()
         
         layout = QVBoxLayout(self)
@@ -115,53 +116,43 @@ class SteelSelectorWidget(QWidget):
         calc_layout = QHBoxLayout(calc_frame)
         calc_layout.setContentsMargins(15, 10, 15, 10)
         
-        self.unit_cost_input = QLineEdit()
-        self.unit_cost_input.setPlaceholderText("Unit Cost (₹)")
-        self.unit_cost_input.setFixedWidth(100)
-        self.unit_cost_input.setStyleSheet("padding: 4px; border: 1px solid #94a3b8; border-radius: 4px; background-color: white;")
+        self.lbl_panel_wt = QLabel("Panel Weight: 0.00 kg")
+        self.lbl_panel_wt.setStyleSheet("border: none; background: transparent; color: #334155;")
         
-        default_steel_cost = self.service.get_steel_unit_cost()
-        if default_steel_cost > 0:
-            self.unit_cost_input.setText(str(default_steel_cost))
+        self.lbl_wastage_wt = QLabel("Wastage Weight: 0.00 kg")
+        self.lbl_wastage_wt.setStyleSheet("border: none; background: transparent; color: #334155;")
         
-        calc_btn = QPushButton("⚡ Calculate Cost")
-        calc_btn.setStyleSheet("background-color: #3b82f6; color: white; font-weight: bold; padding: 5px 15px; border-radius: 4px; border: none;")
-        calc_btn.clicked.connect(self.calculate_steel_cost)
+        self.lbl_total_wt = QLabel("Total Weight: 0.00 kg")
+        self.lbl_total_wt.setStyleSheet("border: none; background: transparent; color: #334155;")
         
-        self.panel_wt_lbl = QLabel("Panel Weight: 0.00 kg")
-        self.panel_wt_lbl.setStyleSheet("border: none; background: transparent; color: #334155;")
+        self.lbl_unit_cost = QLabel("Metal Unit Cost: ₹0.00")
+        self.lbl_unit_cost.setStyleSheet("border: none; background: transparent; color: #334155;")
         
-        self.wastage_wt_lbl = QLabel("Wastage Weight: 0.00 kg")
-        self.wastage_wt_lbl.setStyleSheet("border: none; background: transparent; color: #334155;")
+        self.lbl_unit_panel_cost = QLabel("Unit Panel Cost: ₹0.00")
+        self.lbl_unit_panel_cost.setStyleSheet("border: none; background: transparent; font-weight: bold; color: #0f172a;")
         
-        self.total_wt_lbl = QLabel("Total Weight: 0.00 kg")
-        self.total_wt_lbl.setStyleSheet("border: none; background: transparent; font-weight: bold; color: #0f172a;")
+        self.lbl_total_cost = QLabel("Total Cost: ₹0.00")
+        self.lbl_total_cost.setStyleSheet("border: none; background: transparent; font-weight: bold; color: #dc2626; font-size: 14px;")
         
-        self.cost_lbl = QLabel("Total Cost: ₹0.00")
-        self.cost_lbl.setStyleSheet("border: none; background: transparent; font-weight: bold; color: #dc2626; font-size: 14px;")
-        
-        unit_lbl = QLabel("<b>Unit Cost/kg:</b>")
-        unit_lbl.setStyleSheet("border: none; background: transparent; color: #334155;")
-        
-        calc_layout.addWidget(unit_lbl)
-        calc_layout.addWidget(self.unit_cost_input)
-        calc_layout.addWidget(calc_btn)
+        calc_layout.addWidget(QLabel("<b>Steel Cost Summary:</b>"))
         calc_layout.addStretch()
         
-        sep1 = QLabel(" | ")
-        sep1.setStyleSheet("border: none; background: transparent; color: #94a3b8;")
-        sep2 = QLabel(" | ")
-        sep2.setStyleSheet("border: none; background: transparent; color: #94a3b8;")
-        sep3 = QLabel(" | ")
-        sep3.setStyleSheet("border: none; background: transparent; color: #94a3b8;")
+        def sep():
+            lbl = QLabel(" | ")
+            lbl.setStyleSheet("border: none; background: transparent; color: #94a3b8;")
+            return lbl
         
-        calc_layout.addWidget(self.panel_wt_lbl)
-        calc_layout.addWidget(sep1)
-        calc_layout.addWidget(self.wastage_wt_lbl)
-        calc_layout.addWidget(sep2)
-        calc_layout.addWidget(self.total_wt_lbl)
-        calc_layout.addWidget(sep3)
-        calc_layout.addWidget(self.cost_lbl)
+        calc_layout.addWidget(self.lbl_panel_wt)
+        calc_layout.addWidget(sep())
+        calc_layout.addWidget(self.lbl_wastage_wt)
+        calc_layout.addWidget(sep())
+        calc_layout.addWidget(self.lbl_total_wt)
+        calc_layout.addWidget(sep())
+        calc_layout.addWidget(self.lbl_unit_cost)
+        calc_layout.addWidget(sep())
+        calc_layout.addWidget(self.lbl_unit_panel_cost)
+        calc_layout.addWidget(sep())
+        calc_layout.addWidget(self.lbl_total_cost)
         
         layout.addWidget(calc_frame)
         
@@ -202,9 +193,8 @@ class SteelSelectorWidget(QWidget):
         self.p_dep = p_dep
         self.p_waste = p_waste
         
-        default_steel_cost = self.service.get_steel_unit_cost()
-        if default_steel_cost > 0:
-            self.unit_cost_input.setText(str(default_steel_cost))
+        default_steel_cost = self.service.get_metal_cost_from_quote(self.quote_id, "steel") if self.quote_id else 0.0
+        # No input field to set text anymore, it auto-calculates in calculate_steel_cost
             
         if not panel_id:
             self.table.setRowCount(0)
@@ -293,9 +283,10 @@ class SteelSelectorWidget(QWidget):
     def calculate_weights(self):
         if self.table.rowCount() == 0:
             self.current_total_wt = 0.0
-            self.panel_wt_lbl.setText("Panel Weight: 0.00 kg")
-            self.wastage_wt_lbl.setText("Wastage Weight: 0.00 kg")
-            self.total_wt_lbl.setText("Total Weight: 0.00 kg")
+            self.lbl_panel_wt.setText("Panel Weight: 0.00 kg")
+            self.lbl_wastage_wt.setText("Wastage Weight: 0.00 kg")
+            self.lbl_total_wt.setText("Total Weight: 0.00 kg")
+            self.calculate_steel_cost()
             return
         
         try:
@@ -337,10 +328,11 @@ class SteelSelectorWidget(QWidget):
                 total_wt = panel_wt
                 wastage_wt = 0.0
                 
-            self.panel_wt_lbl.setText(f"Panel Weight: {panel_wt:.2f} kg")
-            self.wastage_wt_lbl.setText(f"Wastage Weight: {wastage_wt:.2f} kg")
-            self.total_wt_lbl.setText(f"Total Weight: {total_wt:.2f} kg")
+            self.lbl_panel_wt.setText(f"Panel Weight: {panel_wt:.2f} kg")
+            self.lbl_wastage_wt.setText(f"Wastage Weight: {wastage_wt:.2f} kg")
+            self.lbl_total_wt.setText(f"Total Weight: {total_wt:.2f} kg")
             self.current_total_wt = total_wt
+            self.calculate_steel_cost()
             
         except Exception as e:
             print(f"Weight calculation error: {e}")
@@ -350,9 +342,24 @@ class SteelSelectorWidget(QWidget):
             self.calculate_weights()
             
         try:
-            unit_cost = float(self.unit_cost_input.text() or 0)
-            total_cost = getattr(self, 'current_total_wt', 0.0) * unit_cost
-            self.cost_lbl.setText(f"Total Cost: ₹{total_cost:,.2f}")
+            unit_cost = self.service.get_metal_cost_from_quote(self.quote_id, "steel") if self.quote_id else 0.0
+            total_weight = getattr(self, 'current_total_wt', 0.0)
+            
+            panel_qty = 1
+            if self.panel_id:
+                panel = self.service.get_panel_by_id(self.panel_id)
+                if panel:
+                    try:
+                        panel_qty = int(panel.get("PanelQty", 1))
+                    except ValueError:
+                        pass
+            
+            unit_panel_cost = total_weight * unit_cost
+            total_cost = unit_panel_cost * panel_qty
+            
+            self.lbl_unit_cost.setText(f"Metal Unit Cost: ₹{unit_cost:.2f}")
+            self.lbl_unit_panel_cost.setText(f"Unit Panel Cost: ₹{unit_panel_cost:.2f}")
+            self.lbl_total_cost.setText(f"Total Cost: ₹{total_cost:,.2f}")
             
         except Exception as e:
             QMessageBox.critical(self, "Calculation Error", f"Failed to calculate cost: {e}")
@@ -448,6 +455,7 @@ class PanelBBSelectorWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.panel_id = None
+        self.quote_id = None
         self.panel_length = 0.0  # default for ReqLength on new rows
         self.service = QuotationService()
         
@@ -692,7 +700,7 @@ class PanelBBSelectorWidget(QWidget):
                 metal = panel.get("BusbarMaterial", "Aluminium")
                 if not metal:
                     metal = "Aluminium"
-                metal_unit_cost = self.service.get_bb_metal_unit_cost(metal)
+                metal_unit_cost = self.service.get_metal_cost_from_quote(self.quote_id, metal) if self.quote_id else 0.0
                 try:
                     panel_qty = int(panel.get("PanelQty", 1))
                 except ValueError:
@@ -1016,6 +1024,7 @@ class PanelPage(QWidget):
         panels_layout.setSpacing(4)
 
         self.table = SearchableTable()
+        self.table.setStyleSheet("QTableView { selection-background-color: #fbcfe8; selection-color: black; }")
         self.table.setColumnCount(14)
         self.table.setHorizontalHeaderLabels([
             "ID", "QuoteID", "Category", "Serial", "Panel Name", "Qty",
@@ -1065,6 +1074,8 @@ class PanelPage(QWidget):
     def load_quotation(self, quote_id, project_name):
         """Update the page context and fetch data."""
         self.quote_id = quote_id
+        self.steel_widget.quote_id = quote_id
+        self.bb_widget.quote_id = quote_id
         self.title_label.setText(f"Panels: {project_name} (ID: {quote_id})")
         self.bb_summary_widget.load(quote_id)
         self.refresh_table()

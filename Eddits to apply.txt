@@ -1,5 +1,5 @@
---remove states button from the side bar 
---add all curd operations search filter for columns module type and make  in modules overview window 
---add search filters for model category and make in "select pricelist  items" window  
---add search filters for model category and make in pricelist window 
---add a x icon on bushbar summary view to remoe that window from screen in view only and if selected again it must show it again 
+have input columns for per unit cost for values like 
+
+-unit paint cost per sq feet
+-unit gascut cost
+-unit electrical cost

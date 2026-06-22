@@ -18,7 +18,8 @@ class QuotationService:
                     q."DateOfRequest", q."Date_Quote", q."QuoteRereceNo",
                     q."QuoteSubject", q."QuoteProjectName",
                     cc."CustomerContactName",
-                    q."PreparedBy", q."QuoteStatus"
+                    q."PreparedBy", q."QuoteStatus",
+                    q."UnitSteelCost", q."UnitAluminiumCost", q."UnitCopperCost"
                 FROM public."tbl_QuoteMain" q
                 LEFT JOIN public."tblCustomers" c ON q."CustomerId" = c."ID"
                 LEFT JOIN public."tblCustomerContacts" cc ON q."CustomerContactID" = cc."ID"
@@ -130,20 +131,35 @@ class QuotationService:
                 raise
 
     def create_quotation(self, **kwargs):
-        """Inserts a new quotation record into tbl_QuoteMain."""
-        query = text("""
-                INSERT INTO public."tbl_QuoteMain" (
-                    "CustomerId", "DateOfRequest", "Date_Quote", "QuoteRereceNo", 
-                    "QuoteSubject", "QuoteProjectName", "PreparedBy", "QuoteStatus"
-                ) VALUES (:customer_id, :req_date, :quote_date, :ref_no, :subject, :project, :prepared_by, :status)
-        """)
-        params = {
-            "customer_id": kwargs.get('customer_id'), "req_date": kwargs.get('req_date'), "quote_date": kwargs.get('quote_date'),
-            "ref_no": kwargs.get('ref_no'), "subject": kwargs.get('subject'), "project": kwargs.get('project'),
-            "prepared_by": kwargs.get('prepared_by'), "status": kwargs.get('status')
-        }
+        """Inserts a new quotation record into tbl_QuoteMain and auto-fills initial metal costs."""
         with get_session() as session:
             try:
+                # Fetch initial metal costs
+                def get_cost(metal_name):
+                    res = session.execute(
+                        text("SELECT unitkgcost FROM public.tbl_bb_metalproperties WHERE LOWER(metal) LIKE :m LIMIT 1"),
+                        {"m": f"%{metal_name.lower()}%"}
+                    ).fetchone()
+                    return float(res[0]) if res and res[0] is not None else 0.0
+
+                steel_cost = get_cost("steel")
+                alum_cost = get_cost("aluminium")
+                copper_cost = get_cost("copper")
+
+                query = text("""
+                        INSERT INTO public."tbl_QuoteMain" (
+                            "CustomerId", "DateOfRequest", "Date_Quote", "QuoteRereceNo", 
+                            "QuoteSubject", "QuoteProjectName", "PreparedBy", "QuoteStatus",
+                            "UnitSteelCost", "UnitAluminiumCost", "UnitCopperCost"
+                        ) VALUES (:customer_id, :req_date, :quote_date, :ref_no, :subject, :project, :prepared_by, :status,
+                                  :steel_cost, :alum_cost, :copper_cost)
+                """)
+                params = {
+                    "customer_id": kwargs.get('customer_id'), "req_date": kwargs.get('req_date'), "quote_date": kwargs.get('quote_date'),
+                    "ref_no": kwargs.get('ref_no'), "subject": kwargs.get('subject'), "project": kwargs.get('project'),
+                    "prepared_by": kwargs.get('prepared_by'), "status": kwargs.get('status'),
+                    "steel_cost": steel_cost, "alum_cost": alum_cost, "copper_cost": copper_cost
+                }
                 session.execute(query, params)
                 session.commit()
             except Exception:
@@ -298,7 +314,8 @@ class QuotationService:
         """
         query = text("""
                 SELECT 
-                    mi."ID", mi."DriveDescription", mi."BOM", mi."LP", mi."%Discount", mi."Selection",
+                    mi."ID", mi."DriveDescription", mi."BOM", mi."LP", mi."%Discount",
+
                     pl."Make",
                     (CAST(mi."BOM" AS NUMERIC) * CAST(mi."LP" AS NUMERIC) * (1 - CAST(mi."%Discount" AS NUMERIC))) as "Amount"
                 FROM public."tbl_ModuleItems" mi
@@ -318,8 +335,8 @@ class QuotationService:
         """Inserts a new module item record."""
         query = text("""
                 INSERT INTO public."tbl_ModuleItems" (
-                    "ID", "DriveDescription", "BOM", "LP", "%Discount", "Selection"
-                ) VALUES (:module_type_id, :drive_description, :bom, :lp, :discount, :selection)
+                    "ID", "DriveDescription", "BOM", "LP", "%Discount"
+                ) VALUES (:module_type_id, :drive_description, :bom, :lp, :discount)
         """)
         params = {
             "module_type_id": module_type_id,
@@ -327,7 +344,7 @@ class QuotationService:
             "bom": bom,
             "lp": lp,
             "discount": discount,
-            "selection": selection
+            "discount": discount
         }
         with get_session() as session:
             try:
@@ -371,21 +388,21 @@ class QuotationService:
                     
                     session.execute(text("""
                         INSERT INTO public."tbl_ModuleItems" (
-                            "ID", "DriveDescription", "BOM", "LP", "%Discount", "Selection"
-                        ) VALUES (:module_type_id, :drive_description, :bom, :lp, :discount, :selection)
+                            "ID", "DriveDescription", "BOM", "LP", "%Discount"
+                        ) VALUES (:module_type_id, :drive_description, :bom, :lp, :discount)
                     """), {
                         "module_type_id": module_type_id,
                         "drive_description": drive_description,
                         "bom": bom,
                         "lp": lp,
                         "discount": discount,
-                        "selection": selection
+                        "discount": discount
                     })
                 else:
                     # Only update non-PK fields
                     query = text("""
                             UPDATE public."tbl_ModuleItems" SET 
-                                "BOM" = :bom, "LP" = :lp, "%Discount" = :discount, "Selection" = :selection
+                                "BOM" = :bom, "LP" = :lp, "%Discount" = :discount
                             WHERE "ID" = :module_type_id AND "DriveDescription" = :drive_description
                     """)
                     params = {
@@ -394,7 +411,7 @@ class QuotationService:
                         "bom": bom,
                         "lp": lp,
                         "discount": discount,
-                        "selection": selection
+                        "discount": discount
                     }
                     session.execute(query, params)
                 session.commit()
@@ -468,8 +485,8 @@ class QuotationService:
                 # 3. Insert into tbl_ModuleItems
                 try:
                     session.execute(
-                        text("""INSERT INTO public."tbl_ModuleItems" ("ID", "DriveDescription", "BOM", "LP", "%Discount", "Selection") 
-                                VALUES (:id, :desc, :bom, :lp, :disc, 'Selected')"""),
+                        text("""INSERT INTO public."tbl_ModuleItems" ("ID", "DriveDescription", "BOM", "LP", "%Discount") 
+                                VALUES (:id, :desc, :bom, :lp, :disc)"""),
                         {"id": target_mt_id, "desc": desc, "bom": bom, "lp": lp, "disc": disc}
                     )
                     added += 1
@@ -878,6 +895,42 @@ class QuotationService:
                 print(f"Error fetching metal unit cost for {metal_name}: {e}")
                 return 0.0
 
+    def get_metal_cost_from_quote(self, quote_id, metal_name):
+        """Fetches the specific frozen unit cost for a metal from a specific quote."""
+        query = text('SELECT "UnitSteelCost", "UnitAluminiumCost", "UnitCopperCost" FROM public."tbl_QuoteMain" WHERE "ID" = :id')
+        with get_session() as session:
+            try:
+                row = session.execute(query, {"id": quote_id}).fetchone()
+                if row:
+                    m_lower = metal_name.lower()
+                    if "steel" in m_lower: return float(row[0] or 0.0)
+                    if "aluminium" in m_lower: return float(row[1] or 0.0)
+                    if "copper" in m_lower: return float(row[2] or 0.0)
+                return 0.0
+            except Exception as e:
+                print(f"Error fetching metal cost from quote {quote_id} for {metal_name}: {e}")
+                return 0.0
+
+    def update_metal_cost_in_quote(self, quote_id, metal_name, new_val):
+        """Updates a specific metal's unit cost in a quotation."""
+        col_name = None
+        m_lower = metal_name.lower()
+        if "steel" in m_lower: col_name = "UnitSteelCost"
+        elif "aluminium" in m_lower: col_name = "UnitAluminiumCost"
+        elif "copper" in m_lower: col_name = "UnitCopperCost"
+        
+        if not col_name: return
+        
+        query = text(f'UPDATE public."tbl_QuoteMain" SET "{col_name}" = :val WHERE "ID" = :id')
+        with get_session() as session:
+            try:
+                session.execute(query, {"val": new_val, "id": quote_id})
+                session.commit()
+            except Exception as e:
+                session.rollback()
+                print(f"Error updating metal cost {col_name} for quote {quote_id}: {e}")
+                raise
+
     def copy_module_items(self, old_module_type_id, new_module_type_id, session=None):
         def _execute(sess):
             result = sess.execute(
@@ -901,9 +954,9 @@ class QuotationService:
                 
                 sess.execute(
                     text("""INSERT INTO public."tbl_ModuleItems" 
-                            ("ID", "DriveDescription", "BOM", "LP", "%Discount", "Selection") 
-                            VALUES (:id, :desc, :bom, :lp, :disc, :sel)"""),
-                    {"id": new_module_type_id, "desc": desc, "bom": old_bom, "lp": lp, "disc": disc, "sel": selection}
+                            ("ID", "DriveDescription", "BOM", "LP", "%Discount") 
+                            VALUES (:id, :desc, :bom, :lp, :disc)"""),
+                    {"id": new_module_type_id, "desc": desc, "bom": old_bom, "lp": lp, "disc": disc}
                 )
 
         if session:
@@ -1310,4 +1363,104 @@ class QuotationService:
                 return [tuple(row) for row in result.fetchall()]
             except Exception as e:
                 print(f"Error fetching busbar summary: {e}")
-                return []
+                return []
+
+    def calculate_panel_process_cost(self, panel_id):
+        """Calculates total module & item cost for a panel."""
+        modules = self.get_panel_modules_by_panel_id(panel_id)
+        panel_total = 0.0
+        for m_row in modules:
+            m_qty = m_row[5]
+            mt_id = m_row[6]
+            m_items = self.get_module_items_by_module_type_id(mt_id)
+            total_items_amount = sum(float(item[6] or 0) for item in m_items)
+            panel_total += float(m_qty or 0) * total_items_amount
+        return panel_total
+
+    def get_panel_dimensions(self, panel_id):
+        """Returns the length, height, and depth of a panel in mm as a tuple (L, H, D)."""
+        panel = self.get_panel_by_id(panel_id)
+        if not panel: return (0.0, 0.0, 0.0)
+        
+        l = float(panel.get("LengthXmm") or 0)
+        h = float(panel.get("HeightYmm") or 0)
+        d = float(panel.get("DepthZmm") or 0)
+        return (l, h, d)
+
+    def calculate_panel_steel_cost(self, panel_id, quote_id):
+        """Calculates total steel cost for a panel using the locked unit cost."""
+        panel = self.get_panel_by_id(panel_id)
+        if not panel: return 0.0
+        
+        p_len = float(panel.get("LengthXmm") or 0)
+        p_hgt = float(panel.get("HeightYmm") or 0)
+        p_dep = float(panel.get("DepthZmm") or 0)
+        p_waste = float(panel.get("AddWaste") or 0)
+        
+        query = text('SELECT * FROM public."tbl_PanelSteel" WHERE "PanelID" = :id')
+        with get_session() as session:
+            steel = session.execute(query, {"id": panel_id}).fetchone()
+            
+        if not steel: return 0.0
+        s = dict(steel._mapping)
+        
+        fb_qty = float(s.get("FrontBackQty") or 0)
+        fb_size = str(s.get("FrontBackSteelSize") or "")
+        sides_qty = float(s.get("SidesQty") or 0)
+        sides_size = str(s.get("SidesSteelSize") or "")
+        bt_qty = float(s.get("BottomTopQty") or 0)
+        bt_size = str(s.get("BottomSteelSize") or "")
+        
+        import re
+        def get_thick(s):
+            m = re.search(r"(\d+(\.\d+)?)", s)
+            return float(m.group(1)) if m else 0.0
+
+        fb_t = get_thick(fb_size)
+        bt_t = get_thick(bt_size)
+        sides_t = get_thick(sides_size)
+        
+        density = 7850
+        fb_wt = fb_t * p_len * p_hgt * density * 1e-9 * fb_qty
+        bt_wt = bt_t * p_len * p_dep * density * 1e-9 * bt_qty
+        sides_wt = sides_t * p_dep * p_hgt * density * 1e-9 * sides_qty
+        
+        panel_wt = fb_wt + bt_wt + sides_wt
+        if 0 < p_waste < 100:
+            total_wt = panel_wt * 100.0 / (100.0 - p_waste)
+        else:
+            total_wt = panel_wt
+            
+        unit_cost = self.get_metal_cost_from_quote(quote_id, "steel")
+        return total_wt * unit_cost
+
+    def calculate_panel_busbar_cost(self, panel_id, quote_id):
+        """Calculates total busbar cost for a panel using the locked unit cost."""
+        panel = self.get_panel_by_id(panel_id)
+        if not panel: return 0.0
+        
+        metal = panel.get("BusbarMaterial", "Aluminium")
+        if not metal: metal = "Aluminium"
+        
+        unit_cost = self.get_metal_cost_from_quote(quote_id, metal)
+        
+        query = text('SELECT * FROM public."tbl_PanelBB" WHERE "PanelID" = :id')
+        with get_session() as session:
+            bb_rows = session.execute(query, {"id": panel_id}).fetchall()
+            
+        total_weight = 0.0
+        for bb in bb_rows:
+            b = dict(bb._mapping)
+            for role, qty_col in [("Select_BB_Phase", "BB_QtyPH"), 
+                                  ("Select_BB_Neutral", "BB_QtyNu"), 
+                                  ("Select_BB_Earth", "BB_QtyEarth")]:
+                bb_id_str = b.get(role)
+                if bb_id_str:
+                    try:
+                        bb_id = int(bb_id_str)
+                        qty = int(b.get(qty_col) or 0)
+                        kg_m = self.get_bb_metal_kg_per_meter(bb_id)
+                        total_weight += qty * kg_m
+                    except ValueError:
+                        pass
+        return total_weight * unit_cost

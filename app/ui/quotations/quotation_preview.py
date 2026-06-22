@@ -146,7 +146,7 @@ class QuotationPreviewPage(QWidget):
         # Calculate Grand Total for the entire quotation
         grand_total = 0.0
         for p_row in panels:
-            pid, _, _, _, _, qty, _, _, _, _, _, _, _, _ = p_row
+            pid, _, _, _, _, qty, _, _, _, _, _, _, _, _, _, _, _ = p_row
             p_qty = float(qty or 0)
             p_modules = self.service.get_panel_modules_by_panel_id(pid)
             p_panel_total = 0.0
@@ -224,7 +224,7 @@ class QuotationPreviewPage(QWidget):
         self.content_layout.addWidget(group)
 
     def _add_panel_widget(self, p_row):
-        pid, qid, cat, ser, name, qty, l, h, d, w, ka, er, st, bm = p_row
+        pid, qid, cat, ser, name, qty, l, h, d, w, ka, er, st, bm, profit, other_cost, overhead_cost = p_row
         
         # Calculate Panel Total (Sum of all contained module totals)
         panel_qty = float(qty or 0)

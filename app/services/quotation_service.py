@@ -18,8 +18,7 @@ class QuotationService:
                     q."DateOfRequest", q."Date_Quote", q."QuoteRereceNo",
                     q."QuoteSubject", q."QuoteProjectName",
                     cc."CustomerContactName",
-                    q."PreparedBy", q."QuoteStatus",
-                    q."UnitSteelCost", q."UnitAluminiumCost", q."UnitCopperCost"
+                    q."PreparedBy", q."QuoteStatus"
                 FROM public."tbl_QuoteMain" q
                 LEFT JOIN public."tblCustomers" c ON q."CustomerId" = c."ID"
                 LEFT JOIN public."tblCustomerContacts" cc ON q."CustomerContactID" = cc."ID"
@@ -39,7 +38,8 @@ class QuotationService:
         query = text("""
                 SELECT "ID", "QuoteID", "PanelCategory", "PanelSerial", "PanelName", "PanelQty",
                        "LengthXmm", "HeightYmm", "DepthZmm", "AddWaste", "PanelKARating",
-                       "EarthRuns", "StandRequired", "BusbarMaterial"
+                       "EarthRuns", "StandRequired", "BusbarMaterial", "Profit",
+                       "OtherCost", "OverHeadCost"
                 FROM public."tbl_Panels" 
                 WHERE "QuoteID" = :quote_id ORDER BY "ID"
         """)
@@ -108,6 +108,47 @@ class QuotationService:
                 session.rollback()
                 raise
 
+    def update_panel_profit(self, panel_id, profit):
+        """Updates the Profit field in tbl_Panels for a specific panel.
+        Called from the Cost Summary page whenever the profit cell changes.
+        """
+        with get_session() as session:
+            try:
+                session.execute(
+                    text('UPDATE public."tbl_Panels" SET "Profit" = :profit WHERE "ID" = :id'),
+                    {"profit": float(profit), "id": panel_id}
+                )
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+
+    def update_panel_other_cost(self, panel_id, value):
+        """Updates the OtherCost field in tbl_Panels for a specific panel."""
+        with get_session() as session:
+            try:
+                session.execute(
+                    text('UPDATE public."tbl_Panels" SET "OtherCost" = :val WHERE "ID" = :id'),
+                    {"val": float(value), "id": panel_id}
+                )
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+
+    def update_panel_overhead_cost(self, panel_id, value):
+        """Updates the OverHeadCost field in tbl_Panels for a specific panel."""
+        with get_session() as session:
+            try:
+                session.execute(
+                    text('UPDATE public."tbl_Panels" SET "OverHeadCost" = :val WHERE "ID" = :id'),
+                    {"val": float(value), "id": panel_id}
+                )
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+
     def get_all_customers(self):
         """Fetches ID and Name from tblCustomers for dropdowns."""
         with get_session() as session:
@@ -134,31 +175,16 @@ class QuotationService:
         """Inserts a new quotation record into tbl_QuoteMain and auto-fills initial metal costs."""
         with get_session() as session:
             try:
-                # Fetch initial metal costs
-                def get_cost(metal_name):
-                    res = session.execute(
-                        text("SELECT unitkgcost FROM public.tbl_bb_metalproperties WHERE LOWER(metal) LIKE :m LIMIT 1"),
-                        {"m": f"%{metal_name.lower()}%"}
-                    ).fetchone()
-                    return float(res[0]) if res and res[0] is not None else 0.0
-
-                steel_cost = get_cost("steel")
-                alum_cost = get_cost("aluminium")
-                copper_cost = get_cost("copper")
-
                 query = text("""
                         INSERT INTO public."tbl_QuoteMain" (
                             "CustomerId", "DateOfRequest", "Date_Quote", "QuoteRereceNo", 
-                            "QuoteSubject", "QuoteProjectName", "PreparedBy", "QuoteStatus",
-                            "UnitSteelCost", "UnitAluminiumCost", "UnitCopperCost"
-                        ) VALUES (:customer_id, :req_date, :quote_date, :ref_no, :subject, :project, :prepared_by, :status,
-                                  :steel_cost, :alum_cost, :copper_cost)
+                            "QuoteSubject", "QuoteProjectName", "PreparedBy", "QuoteStatus"
+                        ) VALUES (:customer_id, :req_date, :quote_date, :ref_no, :subject, :project, :prepared_by, :status)
                 """)
                 params = {
                     "customer_id": kwargs.get('customer_id'), "req_date": kwargs.get('req_date'), "quote_date": kwargs.get('quote_date'),
                     "ref_no": kwargs.get('ref_no'), "subject": kwargs.get('subject'), "project": kwargs.get('project'),
-                    "prepared_by": kwargs.get('prepared_by'), "status": kwargs.get('status'),
-                    "steel_cost": steel_cost, "alum_cost": alum_cost, "copper_cost": copper_cost
+                    "prepared_by": kwargs.get('prepared_by'), "status": kwargs.get('status')
                 }
                 session.execute(query, params)
                 session.commit()
@@ -414,6 +440,57 @@ class QuotationService:
                         "discount": discount
                     }
                     session.execute(query, params)
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+
+    def replace_module_item_across_panels(self, quote_id, old_desc, new_desc, new_bom, new_lp, new_discount):
+        """Replaces a module item with another item across all panels in a given quotation."""
+        with get_session() as session:
+            try:
+                # Find all ModuleTypeIDs for this quote where old_desc exists
+                sql = text("""
+                    SELECT DISTINCT mi."ID"
+                    FROM public."tbl_ModuleItems" mi
+                    JOIN public."tbl_PanelModules" pm ON pm."ModuleTypeID" = mi."ID"
+                    JOIN public."tbl_Panels" p ON p."ID" = pm."PanelID"
+                    WHERE p."QuoteID" = :quote_id AND mi."DriveDescription" = :old_desc
+                """)
+                mt_ids = [row[0] for row in session.execute(sql, {"quote_id": quote_id, "old_desc": old_desc}).fetchall()]
+                
+                if not mt_ids:
+                    return
+
+                for mt_id in mt_ids:
+                    if old_desc != new_desc:
+                        # check if the new_desc already exists in this module type
+                        check_sql = text('SELECT 1 FROM public."tbl_ModuleItems" WHERE "ID" = :mt_id AND "DriveDescription" = :new_desc')
+                        exists = session.execute(check_sql, {"mt_id": mt_id, "new_desc": new_desc}).scalar()
+                        if exists:
+                            # new item exists, delete old and update existing new
+                            session.execute(text('DELETE FROM public."tbl_ModuleItems" WHERE "ID" = :mt_id AND "DriveDescription" = :old_desc'),
+                                            {"mt_id": mt_id, "old_desc": old_desc})
+                            session.execute(text("""
+                                UPDATE public."tbl_ModuleItems" 
+                                SET "BOM" = :bom, "LP" = :lp, "%Discount" = :discount 
+                                WHERE "ID" = :mt_id AND "DriveDescription" = :new_desc
+                            """), {"bom": new_bom, "lp": new_lp, "discount": new_discount, "mt_id": mt_id, "new_desc": new_desc})
+                        else:
+                            # safe to update
+                            session.execute(text("""
+                                UPDATE public."tbl_ModuleItems" 
+                                SET "DriveDescription" = :new_desc, "BOM" = :bom, "LP" = :lp, "%Discount" = :discount 
+                                WHERE "ID" = :mt_id AND "DriveDescription" = :old_desc
+                            """), {"new_desc": new_desc, "bom": new_bom, "lp": new_lp, "discount": new_discount, "mt_id": mt_id, "old_desc": old_desc})
+                    else:
+                        # just update LP, BOM, Discount
+                        session.execute(text("""
+                            UPDATE public."tbl_ModuleItems" 
+                            SET "BOM" = :bom, "LP" = :lp, "%Discount" = :discount 
+                            WHERE "ID" = :mt_id AND "DriveDescription" = :old_desc
+                        """), {"bom": new_bom, "lp": new_lp, "discount": new_discount, "mt_id": mt_id, "old_desc": old_desc})
+
                 session.commit()
             except Exception:
                 session.rollback()
@@ -895,41 +972,78 @@ class QuotationService:
                 print(f"Error fetching metal unit cost for {metal_name}: {e}")
                 return 0.0
 
-    def get_metal_cost_from_quote(self, quote_id, metal_name):
-        """Fetches the specific frozen unit cost for a metal from a specific quote."""
-        query = text('SELECT "UnitSteelCost", "UnitAluminiumCost", "UnitCopperCost" FROM public."tbl_QuoteMain" WHERE "ID" = :id')
+    def get_quote_unit_costs(self, quote_id):
+        """Fetches all unit costs for a quote, auto-generating defaults if missing."""
+        query = text('SELECT "PaintingCost", "GasketCost", "ElectricalCost", "UnitSteelCost", "UnitAluminiumCost", "UnitCopperCost" FROM public."tbl_QuoteUnitCosts" WHERE "QuoteID" = :id')
         with get_session() as session:
             try:
                 row = session.execute(query, {"id": quote_id}).fetchone()
-                if row:
-                    m_lower = metal_name.lower()
-                    if "steel" in m_lower: return float(row[0] or 0.0)
-                    if "aluminium" in m_lower: return float(row[1] or 0.0)
-                    if "copper" in m_lower: return float(row[2] or 0.0)
-                return 0.0
+                if not row:
+                    ins_query = text('''
+                        INSERT INTO public."tbl_QuoteUnitCosts" 
+                        ("QuoteID", "PaintingCost", "GasketCost", "ElectricalCost", "UnitSteelCost", "UnitAluminiumCost", "UnitCopperCost")
+                        VALUES (:id, 20.0, 100.0, 100.0, 78.0, 471.0, 1400.0)
+                    ''')
+                    session.execute(ins_query, {"id": quote_id})
+                    session.commit()
+                    return {"painting": 20.0, "gasket": 100.0, "electrical": 100.0, "steel": 78.0, "aluminium": 471.0, "copper": 1400.0}
+                
+                return {
+                    "painting": float(row[0] or 0.0),
+                    "gasket": float(row[1] or 0.0),
+                    "electrical": float(row[2] or 0.0),
+                    "steel": float(row[3] or 0.0),
+                    "aluminium": float(row[4] or 0.0),
+                    "copper": float(row[5] or 0.0)
+                }
             except Exception as e:
-                print(f"Error fetching metal cost from quote {quote_id} for {metal_name}: {e}")
-                return 0.0
+                print(f"Error fetching unit costs: {e}")
+                session.rollback()
+                return {"painting": 0.0, "gasket": 0.0, "electrical": 0.0, "steel": 0.0, "aluminium": 0.0, "copper": 0.0}
 
-    def update_metal_cost_in_quote(self, quote_id, metal_name, new_val):
-        """Updates a specific metal's unit cost in a quotation."""
-        col_name = None
-        m_lower = metal_name.lower()
-        if "steel" in m_lower: col_name = "UnitSteelCost"
-        elif "aluminium" in m_lower: col_name = "UnitAluminiumCost"
-        elif "copper" in m_lower: col_name = "UnitCopperCost"
-        
-        if not col_name: return
-        
-        query = text(f'UPDATE public."tbl_QuoteMain" SET "{col_name}" = :val WHERE "ID" = :id')
+    def update_quote_unit_costs(self, quote_id, costs_dict):
+        """Updates the unit costs for a quote."""
+        self.get_quote_unit_costs(quote_id) # ensure exists
+        query = text('''
+            UPDATE public."tbl_QuoteUnitCosts" SET
+            "PaintingCost" = :painting, "GasketCost" = :gasket, "ElectricalCost" = :electrical,
+            "UnitSteelCost" = :steel, "UnitAluminiumCost" = :aluminium, "UnitCopperCost" = :copper
+            WHERE "QuoteID" = :id
+        ''')
+        params = {
+            "id": quote_id,
+            "painting": costs_dict.get("painting", 0.0),
+            "gasket": costs_dict.get("gasket", 0.0),
+            "electrical": costs_dict.get("electrical", 0.0),
+            "steel": costs_dict.get("steel", 0.0),
+            "aluminium": costs_dict.get("aluminium", 0.0),
+            "copper": costs_dict.get("copper", 0.0)
+        }
         with get_session() as session:
             try:
-                session.execute(query, {"val": new_val, "id": quote_id})
+                session.execute(query, params)
                 session.commit()
             except Exception as e:
                 session.rollback()
-                print(f"Error updating metal cost {col_name} for quote {quote_id}: {e}")
-                raise
+                raise e
+
+    def get_metal_cost_from_quote(self, quote_id, metal_name):
+        """Fetches the specific frozen unit cost for a metal from a specific quote."""
+        costs = self.get_quote_unit_costs(quote_id)
+        m_lower = metal_name.lower()
+        if "steel" in m_lower: return costs["steel"]
+        if "aluminium" in m_lower: return costs["aluminium"]
+        if "copper" in m_lower: return costs["copper"]
+        return 0.0
+
+    def update_metal_cost_in_quote(self, quote_id, metal_name, new_val):
+        """Updates a specific metal's unit cost in a quotation."""
+        costs = self.get_quote_unit_costs(quote_id)
+        m_lower = metal_name.lower()
+        if "steel" in m_lower: costs["steel"] = new_val
+        elif "aluminium" in m_lower: costs["aluminium"] = new_val
+        elif "copper" in m_lower: costs["copper"] = new_val
+        self.update_quote_unit_costs(quote_id, costs)
 
     def copy_module_items(self, old_module_type_id, new_module_type_id, session=None):
         def _execute(sess):
@@ -1147,6 +1261,20 @@ class QuotationService:
                         INSERT INTO public."tbl_QuoteCommonSpecs" ("QuoteID", {col_str})
                         VALUES (:qid, {val_str})
                     """), {**old_s, "qid": new_quote_id})
+            
+            old_unit_costs = sess.execute(text('SELECT * FROM public."tbl_QuoteUnitCosts" WHERE "QuoteID" = :id'), {"id": quote_id}).fetchone()
+            if old_unit_costs:
+                old_u = dict(old_unit_costs._mapping)
+                sess.execute(text("""
+                    INSERT INTO public."tbl_QuoteUnitCosts" (
+                        "QuoteID", "PaintingCost", "GasketCost", "ElectricalCost", 
+                        "UnitSteelCost", "UnitAluminiumCost", "UnitCopperCost"
+                    ) VALUES (:qid, :p, :g, :e, :s, :a, :c)
+                """), {
+                    "qid": new_quote_id, "p": old_u.get("PaintingCost", 0.0), "g": old_u.get("GasketCost", 0.0),
+                    "e": old_u.get("ElectricalCost", 0.0), "s": old_u.get("UnitSteelCost", 0.0),
+                    "a": old_u.get("UnitAluminiumCost", 0.0), "c": old_u.get("UnitCopperCost", 0.0)
+                })
             
             panels = sess.execute(text('SELECT "ID" FROM public."tbl_Panels" WHERE "QuoteID" = :id'), {"id": quote_id}).fetchall()
             

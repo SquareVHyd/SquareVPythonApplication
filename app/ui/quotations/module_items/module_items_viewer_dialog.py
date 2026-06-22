@@ -63,6 +63,10 @@ class ModuleItemsViewerDialog(QWidget):
         self.table.setItemDelegateForColumn(2, DoubleSpinBoxDelegate(self, min_val=1.0))
         self.table.setItemDelegateForColumn(3, DoubleSpinBoxDelegate(self, min_val=1.0))
         self.table.setItemDelegateForColumn(4, DoubleSpinBoxDelegate(self, min_val=0.0, max_val=100.0))
+        
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._show_context_menu)
+        
         layout.addWidget(self.table)
         self.status_bar = QStatusBar(); layout.addWidget(self.status_bar)
         QShortcut(QKeySequence("Ctrl+N"), self, activated=self._add_item)
@@ -277,6 +281,57 @@ class ModuleItemsViewerDialog(QWidget):
                     pk = self.table.item(idx.row(), 0).data(Qt.UserRole); self.service.delete_module_item(pk[0], pk[1])
                 self._load_items_async()
             except Exception as e: QMessageBox.critical(self, "Error", str(e))
+
+    def _show_context_menu(self, pos):
+        item = self.table.itemAt(pos)
+        if not item: return
+        
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(self)
+        replace_action = menu.addAction("🔄 Replace Item (Across Quote)")
+        
+        action = menu.exec(self.table.mapToGlobal(pos))
+        if action == replace_action:
+            self._replace_item_across_quote(item.row())
+
+    def _replace_item_across_quote(self, row):
+        pk_data = self.table.item(row, 0).data(Qt.UserRole)
+        if not pk_data: return
+        
+        mt_id, old_desc = pk_data
+        
+        # Prepare data for ModuleItemForm
+        def safe_num(text, default=1.0):
+            try: return float(text.replace('₹', '').replace(',', '').replace('%', '').strip() or default)
+            except: return default
+
+        current_data = {
+            "module_type_id": mt_id,
+            "drive_description": old_desc,
+            "bom": safe_num(self.table.item(row, 2).text(), 1.0),
+            "lp": safe_num(self.table.item(row, 3).text(), 0.0),
+            "discount": safe_num(self.table.item(row, 4).text(), 0.0) / 100.0,
+            "sequence_number": row + 1
+        }
+        
+        dialog = ModuleItemForm(mt_id, module_item_data=current_data, parent=self)
+        dialog.setWindowTitle("Replace Item Across Quotation")
+        if dialog.exec() == QDialog.Accepted:
+            data = dialog.get_data()
+            if data:
+                try:
+                    self.service.replace_module_item_across_panels(
+                        self.quote_id, 
+                        old_desc, 
+                        data["drive_description"], 
+                        data["bom"], 
+                        data["lp"], 
+                        data["discount"]
+                    )
+                    self._load_items_async()
+                    QMessageBox.information(self, "Success", f"Replaced '{old_desc}' with '{data['drive_description']}' across the quotation.")
+                except Exception as e:
+                    QMessageBox.critical(self, "Error", str(e))
 
     def _debounce_search(self): self._search_timer.start(300)
     def _perform_search(self):

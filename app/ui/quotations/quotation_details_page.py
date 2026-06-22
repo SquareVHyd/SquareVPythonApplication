@@ -85,10 +85,10 @@ class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
         sidebar_layout.addWidget(title)
         sidebar_layout.addWidget(self.quotations_btn)
         sidebar_layout.addWidget(self.preview_btn)
-        sidebar_layout.addWidget(self.cost_summary_btn)
         sidebar_layout.addWidget(self.panels_btn)
         sidebar_layout.addWidget(self.panel_modules_btn)
         sidebar_layout.addWidget(self.items_btn)
+        sidebar_layout.addWidget(self.cost_summary_btn)
         sidebar_layout.addStretch()
 
         # Close button to return to main ERP (now switches back to dashboard)

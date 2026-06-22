@@ -44,7 +44,7 @@ class SearchableTable(QTableWidget):
         header = self.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.Interactive)
         header.setSectionsMovable(True)
-        header.setStretchLastSection(True)
+        header.setStretchLastSection(False)  # Don't stretch; show horizontal scrollbar instead
         header.setDefaultSectionSize(120)
         header.setMinimumSectionSize(80)
         header.setHighlightSections(False)
@@ -53,6 +53,8 @@ class SearchableTable(QTableWidget):
         self.setAlternatingRowColors(True)
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.setShowGrid(True)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.setStyleSheet(
             "QTableWidget { gridline-color: #e1e1e1; border: 1px solid #d9d9d9; }"
             "QHeaderView::section { background-color: #f7f7f7; padding: 6px; border: 1px solid #d9d9d9; }"

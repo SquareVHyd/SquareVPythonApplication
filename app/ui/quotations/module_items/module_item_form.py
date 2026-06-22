@@ -33,10 +33,10 @@ class ModuleItemForm(QDialog):
         self.make_input.editTextChanged.connect(self._on_make_changed); self.make_input.lineEdit().setPlaceholderText("Search Make...")
         self.lp_input = QDoubleSpinBox(); self.lp_input.setMinimum(1.0); self.lp_input.setMaximum(9999999.0)
         self.discount_input = QDoubleSpinBox(); self.discount_input.setMinimum(0.0); self.discount_input.setMaximum(100.0)
-        self.selection_input = QLineEdit(); self.sequence_input = QSpinBox(); self.sequence_input.setRange(1, 9999)
+        self.sequence_input = QSpinBox(); self.sequence_input.setRange(1, 9999)
         form.addRow("Drive Description:", self.drive_description_combo); form.addRow("BOM (Used Qty):", self.bom_input); form.addRow("Make:", self.make_input)
         form.addRow("List Price (LP):", self.lp_input); form.addRow("Discount (%):", self.discount_input)
-        form.addRow("Selection (Model):", self.selection_input); form.addRow("Sequence:", self.sequence_input)
+        form.addRow("Sequence:", self.sequence_input)
         layout.addLayout(form); buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept); buttons.rejected.connect(self.reject); layout.addWidget(buttons)
 
@@ -75,9 +75,8 @@ class ModuleItemForm(QDialog):
             self.make_input.setCurrentText(str(data.get("make", "")))
             self.lp_input.setValue(float(data.get("list_price") or 1.0))
             self.discount_input.setValue(float(data.get("discount_percent") or 0) * 100.0)
-            self.selection_input.setText(data.get("model", ""))
         else:
-            self.bom_input.setValue(1.0); self.lp_input.setValue(1.0); self.discount_input.setValue(0.0); self.selection_input.clear()
+            self.bom_input.setValue(1.0); self.lp_input.setValue(1.0); self.discount_input.setValue(0.0)
         self.make_input.blockSignals(False)
 
     def fill_data(self, data):
@@ -93,7 +92,6 @@ class ModuleItemForm(QDialog):
         self.bom_input.setValue(float(bom) if bom is not None else 1.0)
         self.lp_input.setValue(float(lp) if lp is not None else 1.0)
         self.discount_input.setValue(float(data.get("discount") or 0) * 100.0)
-        self.selection_input.setText(str(data.get("selection", "")))
         
         self.sequence_input.setValue(int(data.get("sequence_number", 1)))
         self.drive_description_combo.blockSignals(False); self.make_input.blockSignals(False)
@@ -101,5 +99,5 @@ class ModuleItemForm(QDialog):
     def get_data(self):
         desc = self.drive_description_combo.currentText().strip()
         if not desc: QMessageBox.warning(self, "Validation", "Drive Description is required."); return None
-        try: return {"module_type_id": self.module_type_id, "drive_description": desc, "bom": self.bom_input.value(), "lp": self.lp_input.value(), "discount": self.discount_input.value() / 100.0, "selection": self.selection_input.text().strip(), "sequence_number": self.sequence_input.value()}
+        try: return {"module_type_id": self.module_type_id, "drive_description": desc, "bom": self.bom_input.value(), "lp": self.lp_input.value(), "discount": self.discount_input.value() / 100.0, "sequence_number": self.sequence_input.value()}
         except: QMessageBox.warning(self, "Invalid Input", "BOM, List Price, and Discount must be numeric."); return None

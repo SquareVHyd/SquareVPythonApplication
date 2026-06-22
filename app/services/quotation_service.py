@@ -866,6 +866,18 @@ class QuotationService:
                 print(f"Error fetching steel unit cost: {e}")
                 return 0.0
 
+    def get_bb_metal_unit_cost(self, metal_name):
+        """Fetches the unit cost for a specific metal from tbl_bb_metalproperties."""
+        query = text('SELECT unitkgcost FROM public.tbl_bb_metalproperties WHERE LOWER(metal) = LOWER(:metal) LIMIT 1')
+        with get_session() as session:
+            try:
+                result = session.execute(query, {"metal": metal_name})
+                row = result.fetchone()
+                return float(row[0]) if row and row[0] is not None else 0.0
+            except Exception as e:
+                print(f"Error fetching metal unit cost for {metal_name}: {e}")
+                return 0.0
+
     def copy_module_items(self, old_module_type_id, new_module_type_id, session=None):
         def _execute(sess):
             result = sess.execute(
@@ -1098,3 +1110,204 @@ class QuotationService:
                 except Exception as e:
                     new_session.rollback()
                     raise e
+
+    def get_bb_sizes_by_amps_and_metal(self, amps_req, metal):
+        """Fetches BB sizes from vwBB_Summary within +/- 25% of amps_req and matching metal."""
+        min_amps = amps_req * 0.75
+        max_amps = amps_req * 1.25
+        query = text('SELECT "ID", "BBSize" FROM public."vwBB_Summary" WHERE "CalAmps" >= :min AND "CalAmps" <= :max AND "metal" = :metal ORDER BY "CalAmps" ASC')
+        with get_session() as session:
+            try:
+                result = session.execute(query, {"min": min_amps, "max": max_amps, "metal": metal})
+                return [(row[0], row[1]) for row in result.fetchall()]
+            except Exception as e:
+                print(f"Error fetching BB sizes by amps and metal: {e}")
+                return []
+
+    def get_bb_size_by_id(self, bb_id):
+        query = text('SELECT "BBSize" FROM public."vwBB_Summary" WHERE "ID" = :id')
+        with get_session() as session:
+            try:
+                res = session.execute(query, {"id": bb_id}).fetchone()
+                return res[0] if res else str(bb_id)
+            except Exception:
+                return str(bb_id)
+
+    def get_bb_metal_kg_per_meter(self, bb_id):
+        query = text('SELECT "MetalKgPerMeter" FROM public."vwBB_Summary" WHERE "ID" = :id')
+        with get_session() as session:
+            try:
+                res = session.execute(query, {"id": bb_id}).fetchone()
+                return float(res[0]) if res else 0.0
+            except Exception:
+                return 0.0
+
+    def get_bb_run_length(self, bb_id):
+        query = text('SELECT "Run" FROM public."vwBB_Summary" WHERE "ID" = :id')
+        with get_session() as session:
+            try:
+                res = session.execute(query, {"id": bb_id}).fetchone()
+                return float(res[0]) if res else 0.0
+            except Exception:
+                return 0.0
+
+    def get_panel_by_id(self, panel_id):
+        """Fetches a panel by its ID."""
+        query = text('SELECT * FROM public."tbl_Panels" WHERE "ID" = :id')
+        with get_session() as session:
+            try:
+                result = session.execute(query, {"id": panel_id})
+                row = result.fetchone()
+                return dict(row._mapping) if row else None
+            except Exception as e:
+                print(f"Error fetching panel: {e}")
+                return None
+
+    def get_panel_bb_configs_by_panel(self, panel_id):
+        """Fetches busbar records for a specific panel."""
+        query = text('SELECT * FROM public."tbl_PanelBB" WHERE "PanelID" = :id ORDER BY "ID" DESC')
+        with get_session() as session:
+            try:
+                result = session.execute(query, {"id": panel_id})
+                return [tuple(row) for row in result.fetchall()]
+            except Exception as e:
+                print(f"Error fetching panel BB configs: {e}")
+                return []
+
+    def ensure_panel_bb_configs_for_panels(self, panel_ids):
+        """Ensures every panel has a busbar config. Fetches panel length for ReqLength default."""
+        with get_session() as session:
+            try:
+                for pid in panel_ids:
+                    res = session.execute(
+                        text('SELECT 1 FROM public."tbl_PanelBB" WHERE "PanelID" = :pid'), {"pid": pid}
+                    )
+                    if not res.fetchone():
+                        # Get panel length for ReqLength default
+                        p_row = session.execute(
+                            text('SELECT "LengthXmm" FROM public."tbl_Panels" WHERE "ID" = :pid'), {"pid": pid}
+                        ).fetchone()
+                        req_len = float(p_row[0]) if p_row and p_row[0] is not None else 0.0
+                        session.execute(text("""
+                            INSERT INTO public."tbl_PanelBB" (
+                                "PanelID", "NeutralRating", "BusSection", "BusSectionQty", "AmpsRequested",
+                                "AmpsSelected", "BusbarClearence", "BB_QtyPH", "BB_QtyNu", "BB_QtyEarth",
+                                "Select_BB_Phase", "Select_BB_Neutral", "Select_BB_Earth", "ReqLength"
+                            ) VALUES (:pid, 100, 'Main', 1, 0, '0', 'Standard', 1, 1, 1, '', '', '', :req_len)
+                        """), {"pid": pid, "req_len": req_len})
+                session.commit()
+            except Exception as e:
+                session.rollback()
+                print(f"Error ensuring panel BB configs: {e}")
+
+    def add_panel_bb_config(self, panel_id, req_length=0.0):
+        """Adds a new busbar config row with defaults (ReqLength defaults to panel length)."""
+        with get_session() as session:
+            try:
+                query = text("""
+                INSERT INTO public."tbl_PanelBB" (
+                    "PanelID", "NeutralRating", "BusSection", "BusSectionQty", "AmpsRequested",
+                    "AmpsSelected", "BusbarClearence", "BB_QtyPH", "BB_QtyNu", "BB_QtyEarth",
+                    "Select_BB_Phase", "Select_BB_Neutral", "Select_BB_Earth", "ReqLength"
+                ) VALUES (:pid, 100, 'Main', 1, 0, '0', 'Standard', 1, 1, 1, '', '', '', :req_len)
+                RETURNING "ID"
+                """)
+                res = session.execute(query, {"pid": panel_id, "req_len": req_length})
+                new_id = res.fetchone()[0]
+                session.commit()
+                return new_id
+            except Exception as e:
+                session.rollback()
+                print(f"Error adding panel BB config: {e}")
+                raise
+
+    def delete_panel_bb_config(self, bb_id):
+        """Deletes a busbar config record by ID."""
+        with get_session() as session:
+            try:
+                query = text('DELETE FROM public."tbl_PanelBB" WHERE "ID" = :bb_id')
+                session.execute(query, {"bb_id": bb_id})
+                session.commit()
+            except Exception as e:
+                session.rollback()
+                print(f"Error deleting panel BB config: {e}")
+                raise
+
+    def update_full_panel_bb_config(self, bb_id, data):
+        """Updates all fields for a busbar record at once with provided data dictionary."""
+        with get_session() as session:
+            try:
+                update_columns_order = [
+                    "NeutralRating", "BusSection", "BusSectionQty", "AmpsRequested",
+                    "AmpsSelected", "BusbarClearence", "BB_QtyPH", "BB_QtyNu", "BB_QtyEarth",
+                    "Select_BB_Phase", "Select_BB_Neutral", "Select_BB_Earth", "ReqLength"
+                ]
+                set_clause = ", ".join([f'"{col}" = :{col}' for col in update_columns_order])
+                query = text(f'UPDATE public."tbl_PanelBB" SET {set_clause} WHERE "ID" = :bb_id')
+                params = {col: data.get(col) for col in update_columns_order}
+                params["bb_id"] = bb_id
+                session.execute(query, params)
+                session.commit()
+            except Exception as e:
+                session.rollback()
+                print(f"Error updating full panel BB config: {e}")
+                raise
+
+    def get_busbar_summary_by_quote(self, quote_id):
+        """
+        Returns a summary of unique busbar IDs used across all panels in a quotation,
+        along with the summed quantities from BB_QtyPH, BB_QtyNu, and BB_QtyEarth.
+        Joins vwBB_Summary to resolve the busbar size label (BBSize column).
+        Returns list of tuples: (bb_id, bb_size, total_qty)
+        """
+        query = text("""
+            SELECT
+                bb_usage.bb_id,
+                COALESCE(vs."BBSize", CAST(bb_usage.bb_id AS TEXT)) AS bb_size,
+                SUM(bb_usage.qty) AS total_qty
+            FROM (
+                SELECT
+                    CAST(pb."Select_BB_Phase" AS INTEGER) AS bb_id,
+                    SUM(COALESCE(pb."BB_QtyPH", 0)) AS qty
+                FROM public."tbl_PanelBB" pb
+                JOIN public."tbl_Panels" p ON pb."PanelID" = p."ID"
+                WHERE p."QuoteID" = :quote_id
+                  AND pb."Select_BB_Phase" IS NOT NULL
+                  AND pb."Select_BB_Phase" <> ''
+                GROUP BY pb."Select_BB_Phase"
+
+                UNION ALL
+
+                SELECT
+                    CAST(pb."Select_BB_Neutral" AS INTEGER) AS bb_id,
+                    SUM(COALESCE(pb."BB_QtyNu", 0)) AS qty
+                FROM public."tbl_PanelBB" pb
+                JOIN public."tbl_Panels" p ON pb."PanelID" = p."ID"
+                WHERE p."QuoteID" = :quote_id
+                  AND pb."Select_BB_Neutral" IS NOT NULL
+                  AND pb."Select_BB_Neutral" <> ''
+                GROUP BY pb."Select_BB_Neutral"
+
+                UNION ALL
+
+                SELECT
+                    CAST(pb."Select_BB_Earth" AS INTEGER) AS bb_id,
+                    SUM(COALESCE(pb."BB_QtyEarth", 0)) AS qty
+                FROM public."tbl_PanelBB" pb
+                JOIN public."tbl_Panels" p ON pb."PanelID" = p."ID"
+                WHERE p."QuoteID" = :quote_id
+                  AND pb."Select_BB_Earth" IS NOT NULL
+                  AND pb."Select_BB_Earth" <> ''
+                GROUP BY pb."Select_BB_Earth"
+            ) bb_usage
+            LEFT JOIN public."vwBB_Summary" vs ON vs."ID" = bb_usage.bb_id
+            GROUP BY bb_usage.bb_id, vs."BBSize"
+            ORDER BY bb_usage.bb_id
+        """)
+        with get_session() as session:
+            try:
+                result = session.execute(query, {"quote_id": quote_id})
+                return [tuple(row) for row in result.fetchall()]
+            except Exception as e:
+                print(f"Error fetching busbar summary: {e}")
+                return []

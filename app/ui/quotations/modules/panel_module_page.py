@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
-    QLineEdit, QLabel, QAbstractItemView, QMessageBox, QStatusBar, QDialog, QComboBox, QMenu
+    QLineEdit, QLabel, QAbstractItemView, QMessageBox, QStatusBar, QDialog, QComboBox, QMenu, QSplitter
 )
 from PySide6.QtCore import Qt, QTimer, QPoint
 from PySide6.QtGui import QAction
@@ -10,7 +10,9 @@ from app.utils.worker_thread import Worker
 from app.ui.quotations.modules.panel_module_form import PanelModuleForm
 from app.ui.quotations.modules.panel_module_preview_dialog import PanelModulePreviewDialog
 from app.ui.quotations.module_items.module_items_viewer_dialog import ModuleItemsViewerDialog
-from app.ui.quotations.panel_delegates import ComboBoxDelegate
+from app.ui.quotations.panel_delegates import ComboBoxDelegate, DoubleSpinBoxDelegate
+from app.ui.quotations.module_items.module_item_form import ModuleItemForm
+from app.ui.quotations.module_items.select_module_items_dialog import SelectModuleItemsDialog
 
 # Shared dropdown lists for Panel Modules
 INGOG_LIST = ["Incomer", "Outgoing", "R_Outgoing", "L_Outgoing", "Buscoupler", "Change Over", "Add-ON", "Sub-Incomer", "Sub-Outgoing", "Sub-Incomer-2", "Sub-Outgoing-2", "Busduct"]
@@ -112,8 +114,62 @@ class PanelModulePage(QWidget):
         self.table.setItemDelegateForColumn(8, ComboBoxDelegate(self, items=KA_LIST, editable=True))
         self.table.setItemDelegateForColumn(9, ComboBoxDelegate(self, items=RELEASE_LIST, editable=True))
         self.table.setItemDelegateForColumn(10, ComboBoxDelegate(self, items=PROTECTION_LIST, editable=True))
+        
+        self.table.itemSelectionChanged.connect(self._on_module_selection_changed)
 
-        layout.addWidget(self.table)
+        # Add a splitter to contain both tables vertically
+        self.splitter = QSplitter(Qt.Vertical)
+        
+        # Modules table wrapper
+        self.modules_wrapper = QWidget()
+        modules_layout = QVBoxLayout(self.modules_wrapper)
+        modules_layout.setContentsMargins(0, 0, 0, 0)
+        modules_layout.addWidget(self.table)
+        
+        # Items table wrapper
+        self.items_wrapper = QWidget()
+        items_layout = QVBoxLayout(self.items_wrapper)
+        items_layout.setContentsMargins(0, 0, 0, 0)
+        
+        items_header = QHBoxLayout()
+        self.items_label = QLabel("Module Items")
+        self.items_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
+        items_header.addWidget(self.items_label)
+        
+        items_header.addStretch()
+        self.item_add_btn = QPushButton("➕ Add Item")
+        self.item_add_btn.clicked.connect(self._add_item)
+        self.item_add_from_mod_btn = QPushButton("📂 Add From Module")
+        self.item_add_from_mod_btn.clicked.connect(self._add_from_module)
+        self.item_edit_btn = QPushButton("✏️ Edit Item")
+        self.item_edit_btn.clicked.connect(self._edit_item)
+        self.item_del_btn = QPushButton("🗑️ Delete Item")
+        self.item_del_btn.clicked.connect(self._delete_item)
+        
+        items_header.addWidget(self.item_add_btn)
+        items_header.addWidget(self.item_add_from_mod_btn)
+        items_header.addWidget(self.item_edit_btn)
+        items_header.addWidget(self.item_del_btn)
+        
+        items_layout.addLayout(items_header)
+        
+        self.items_table = SearchableTable()
+        self.items_table.setColumnCount(7)
+        self.items_table.setHorizontalHeaderLabels(["ID", "Description", "Make", "BOM", "LP", "Disc", "Amount"])
+        self.items_table.hideColumn(0)
+        self.items_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        # Apply delegates for inline editing
+        self.items_table.setItemDelegateForColumn(3, DoubleSpinBoxDelegate(self, min_val=0.0))
+        self.items_table.setItemDelegateForColumn(4, DoubleSpinBoxDelegate(self, min_val=0.0))
+        self.items_table.setItemDelegateForColumn(5, DoubleSpinBoxDelegate(self, min_val=0.0, max_val=100.0))
+        self.items_table.itemChanged.connect(self._handle_module_item_changed)
+        items_layout.addWidget(self.items_table)
+        
+        self.splitter.addWidget(self.modules_wrapper)
+        self.splitter.addWidget(self.items_wrapper)
+        
+        # Replace the direct widget addition with splitter
+        layout.addWidget(self.splitter)
         
         self.status_bar = QStatusBar()
         layout.addWidget(self.status_bar)
@@ -132,6 +188,8 @@ class PanelModulePage(QWidget):
         self.title_label.setText("Quotation Panel Modules")
         self.panel_selection_combo.clear()
         self.table.setRowCount(0)
+        self.items_table.setRowCount(0)
+        self.items_label.setText("Module Items")
         self._cache = []
         self.status_bar.clearMessage()
 
@@ -270,6 +328,180 @@ class PanelModulePage(QWidget):
             self.refresh_table()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to paste module: {e}")
+
+    def _on_module_selection_changed(self):
+        selected = self.table.selectionModel().selectedRows()
+        if not selected:
+            self.items_table.setRowCount(0)
+            self.items_label.setText("Module Items")
+            return
+            
+        row = selected[0].row()
+        mt_id_str = self.table.item(row, 5).text()
+        if not mt_id_str:
+            return
+        mt_id = int(mt_id_str)
+        mt_name = self.table.item(row, 6).text()
+        m_qty_str = self.table.item(row, 4).text()
+        m_qty = float(m_qty_str) if m_qty_str else 1.0
+        
+        self.items_label.setText(f"Module Items: {mt_name}")
+        
+        self._items_worker = Worker(self.service.get_module_items_by_module_type_id, mt_id)
+        self._items_worker.result.connect(lambda items: self._render_items(items, m_qty))
+        self._items_worker.start()
+
+    def _render_items(self, items, m_qty):
+        self.items_table.blockSignals(True)
+        self.items_table.setRowCount(len(items))
+        for r, item in enumerate(items):
+            # item is tuple: (ID, Desc, BOM, LP, Disc, Make, Amount)
+            self.items_table.setItem(r, 0, NumericTableWidgetItem(str(item[0])))
+            self.items_table.setItem(r, 1, NumericTableWidgetItem(str(item[1])))
+            self.items_table.setItem(r, 2, NumericTableWidgetItem(str(item[5] or "")))
+            
+            bom = float(item[2]) if item[2] else 0.0
+            bom_val = bom if bom != 0.0 else m_qty
+            
+            self.items_table.setItem(r, 3, NumericTableWidgetItem(str(bom_val)))
+            self.items_table.setItem(r, 4, NumericTableWidgetItem(f"{item[3]:,.2f}" if item[3] else "0.00"))
+            self.items_table.setItem(r, 5, NumericTableWidgetItem(f"{item[4]*100:.1f}%" if item[4] else "0.0%"))
+            self.items_table.setItem(r, 6, NumericTableWidgetItem(f"{item[6]:,.2f}" if item[6] else "0.00"))
+            
+            for c in range(7):
+                it = self.items_table.item(r, c)
+                if it:
+                    if c in {3, 4, 5}:
+                        it.setFlags(it.flags() | Qt.ItemIsEditable)
+                    else:
+                        it.setFlags(it.flags() & ~Qt.ItemIsEditable)
+        
+        self.items_table.resizeColumnsToContents()
+        self.items_table.blockSignals(False)
+        self._items_worker = None
+
+    def _get_selected_module_info(self):
+        selected = self.table.selectionModel().selectedRows()
+        if not selected: return None
+        row = selected[0].row()
+        mt_id_str = self.table.item(row, 5).text()
+        if not mt_id_str: return None
+        mt_id = int(mt_id_str)
+        m_qty_str = self.table.item(row, 4).text()
+        m_qty = float(m_qty_str) if m_qty_str else 1.0
+        return mt_id, m_qty
+
+    def _add_item(self):
+        info = self._get_selected_module_info()
+        if not info: return
+        mt_id, m_qty = info
+        
+        dialog = ModuleItemForm(mt_id, module_item_data={"bom": m_qty}, parent=self)
+        if dialog.exec() == QDialog.Accepted:
+            data = dialog.get_data()
+            if data:
+                try: 
+                    self.service.create_module_item(
+                        data["module_type_id"],
+                        data["drive_description"],
+                        data["bom"],
+                        data["lp"],
+                        data["discount"]
+                    )
+                    self._on_module_selection_changed()
+                except Exception as e: QMessageBox.critical(self, "Error", str(e))
+
+    def _add_from_module(self):
+        info = self._get_selected_module_info()
+        if not info: return
+        mt_id, _ = info
+        
+        dialog = SelectModuleItemsDialog(target_mt_id=mt_id, parent=self)
+        if dialog.exec() == QDialog.Accepted:
+            self._on_module_selection_changed()
+
+    def _edit_item(self):
+        info = self._get_selected_module_info()
+        if not info: return
+        mt_id, _ = info
+        
+        selected = self.items_table.selectionModel().selectedRows()
+        if not selected: return
+        row = selected[0].row()
+        
+        desc = self.items_table.item(row, 1).text()
+        bom = float(self.items_table.item(row, 3).text() or 1.0)
+        lp = float(self.items_table.item(row, 4).text().replace(',', '') or 0.0)
+        disc = float(self.items_table.item(row, 5).text().replace('%', '') or 0.0) / 100.0
+
+        current_data = {
+            "module_type_id": mt_id, 
+            "drive_description": desc, 
+            "bom": bom, 
+            "lp": lp, 
+            "discount": disc
+        }
+        
+        dialog = ModuleItemForm(mt_id, module_item_data=current_data, parent=self)
+        if dialog.exec() == QDialog.Accepted:
+            data = dialog.get_data()
+            if data:
+                try: 
+                    self.service.update_module_item(
+                        mt_id, desc,
+                        data["module_type_id"],
+                        data["drive_description"],
+                        data["bom"],
+                        data["lp"],
+                        data["discount"]
+                    )
+                    self._on_module_selection_changed()
+                except Exception as e: QMessageBox.critical(self, "Error", str(e))
+
+    def _delete_item(self):
+        info = self._get_selected_module_info()
+        if not info: return
+        mt_id, _ = info
+        
+        selected = self.items_table.selectionModel().selectedRows()
+        if not selected: return
+        
+        if QMessageBox.question(self, "Remove", "Remove selected item(s)?") == QMessageBox.Yes:
+            try:
+                for idx in sorted(selected, key=lambda x: x.row(), reverse=True):
+                    desc = self.items_table.item(idx.row(), 1).text()
+                    self.service.delete_module_item(mt_id, desc)
+                self._on_module_selection_changed()
+            except Exception as e: QMessageBox.critical(self, "Error", str(e))
+
+    def _handle_module_item_changed(self, item):
+        col = item.column()
+        if col not in {3, 4, 5}: return
+        
+        info = self._get_selected_module_info()
+        if not info: return
+        mt_id, _ = info
+
+        self.items_table.blockSignals(True)
+        try:
+            row = item.row()
+            desc = self.items_table.item(row, 1).text()
+            
+            def safe_num(text, default=1.0):
+                try: return float(text.replace('₹', '').replace(',', '').replace('%', '').strip() or default)
+                except: return default
+            
+            bom = safe_num(self.items_table.item(row, 3).text(), 1.0)
+            lp = safe_num(self.items_table.item(row, 4).text(), 0.0)
+            disc = safe_num(self.items_table.item(row, 5).text(), 0.0) / 100.0
+            
+            self.service.update_module_item(mt_id, desc, mt_id, desc, bom, lp, disc)
+            # Re-render to update Amount. But this might cause focus loss, we will just call reload data
+            QTimer.singleShot(100, self._on_module_selection_changed)
+        except Exception as e: 
+            print(f"Error during inline update: {e}")
+        finally: 
+            self.items_table.blockSignals(False)
 
     def _handle_item_changed(self, item):
         if not item or item.row() < 0: return

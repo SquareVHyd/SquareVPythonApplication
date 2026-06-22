@@ -56,11 +56,10 @@ class ModuleItemsViewerDialog(QWidget):
         self.delete_btn = QPushButton("🗑️ Delete Item"); self.delete_btn.clicked.connect(self._delete_item)
         actions.addWidget(self.add_btn); actions.addWidget(self.add_from_mod_btn); actions.addWidget(self.edit_btn); actions.addWidget(self.delete_btn)
         actions.addStretch(); layout.addLayout(actions)
-        self.table = SearchableTable(); self.table.setColumnCount(6)
-        self.table.setHorizontalHeaderLabels(["ID", "DriveDescription", "BOM", "LP", "%Discount", "Selection"])
+        self.table = SearchableTable(); self.table.setColumnCount(5)
+        self.table.setHorizontalHeaderLabels(["ID", "DriveDescription", "BOM", "LP", "%Discount"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows); self.table.setSortingEnabled(True)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive); self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.table.setItemDelegateForColumn(5, ComboBoxDelegate(self, items=["✅", "❌"], editable=False))
         self.table.setItemDelegateForColumn(2, DoubleSpinBoxDelegate(self, min_val=1.0))
         self.table.setItemDelegateForColumn(3, DoubleSpinBoxDelegate(self, min_val=1.0))
         self.table.setItemDelegateForColumn(4, DoubleSpinBoxDelegate(self, min_val=0.0, max_val=100.0))
@@ -123,7 +122,7 @@ class ModuleItemsViewerDialog(QWidget):
                     if not selected_pm: return [], 1, 1, "", 0
                     module_type_id, pnl_qty, mod_qty = selected_pm[6], int(selected_pm[3] or 1), int(selected_pm[5] or 1)
                     pnl_name = self.panel_combo.currentText().split(" (Qty:")[0]
-                    sql = text("""SELECT mi."ID", mi."DriveDescription", mi."BOM", mi."LP", mi."%Discount", mi."Selection", pl."Make", pl."Model" FROM public."tbl_ModuleItems" mi LEFT JOIN public."vwPriceList" pl ON mi."DriveDescription" = pl."ItemDescription" WHERE mi."ID" = :mt_id""")
+                    sql = text("""SELECT mi."ID", mi."DriveDescription", mi."BOM", mi."LP", mi."%Discount", pl."Make", pl."Model" FROM public."tbl_ModuleItems" mi LEFT JOIN public."vwPriceList" pl ON mi."DriveDescription" = pl."ItemDescription" WHERE mi."ID" = :mt_id""")
                     rows = session.execute(sql, {"mt_id": module_type_id}).fetchall()
                     return rows, pnl_qty, mod_qty, pnl_name, module_type_id
                 else:
@@ -142,7 +141,6 @@ class ModuleItemsViewerDialog(QWidget):
                             ) as "TotalBOM",
                             MAX(mi."LP") as "LP",
                             MAX(mi."%Discount") as "Discount",
-                            MAX(mi."Selection") as "Selection",
                             MAX(pl."Make") as "Make",
                             MAX(pl."Model") as "Model"
                         FROM public."tbl_Panels" p
@@ -165,16 +163,15 @@ class ModuleItemsViewerDialog(QWidget):
         self.table.blockSignals(True); self._cache = []; self.table.setSortingEnabled(False); self.table.setRowCount(len(rows))
         self.table.setColumnHidden(0, is_summary)
         for r, row in enumerate(rows):
-            mt_id, desc, bom, lp, disc, sel, make, model = row
+            mt_id, desc, bom, lp, disc, make, model = row
             # Default to the module's quantity (PanelModQty) if the item's BOM is not specified or zero
             bom_val = float(bom) if (bom is not None and float(bom) != 0) else float(mod_qty)
             lp_val, disc_val = float(lp or 0), float(disc or 0)
-            sel_display = "❌" if sel == "Not Selected" else "✅"
-            data = [mt_id, desc, bom_val, lp_val, f"{disc_val*100:.2f}%", sel_display]
+            data = [mt_id, desc, bom_val, lp_val, f"{disc_val*100:.2f}%"]
             self._cache.append(row)
             for c, val in enumerate(data):
                 item = NumericTableWidgetItem(str(val))
-                if (not is_summary and c in {2, 3, 4, 5}) or (is_summary and c in {3, 4}): 
+                if (not is_summary and c in {2, 3, 4}) or (is_summary and c in {3, 4}): 
                     item.setFlags(item.flags() | Qt.ItemIsEditable)
                 else: item.setFlags(item.flags() & ~Qt.ItemIsEditable)
                 if c == 0: item.setData(Qt.UserRole, (mt_id, desc))
@@ -186,7 +183,7 @@ class ModuleItemsViewerDialog(QWidget):
 
     def _handle_item_changed(self, item):
         col = item.column()
-        if col not in {2, 3, 4, 5}: return
+        if col not in {2, 3, 4}: return
         self.table.blockSignals(True)
         try:
             row = item.row()
@@ -200,7 +197,6 @@ class ModuleItemsViewerDialog(QWidget):
             bom = safe_num(self.table.item(row, 2).text(), 1.0)
             lp = safe_num(self.table.item(row, 3).text(), 0.0)
             disc = safe_num(self.table.item(row, 4).text(), 0.0) / 100.0
-            db_sel = "Selected" if self.table.item(row, 5).text() == "✅" else "Not Selected"
             
             if is_summary:
                 # Bulk Update across the current scope (Quote or Panel)
@@ -226,7 +222,7 @@ class ModuleItemsViewerDialog(QWidget):
                     })
                     session.commit()
             else:
-                self.service.update_module_item(pk_data[0], pk_data[1], pk_data[0], pk_data[1], bom, lp, disc, db_sel)
+                self.service.update_module_item(pk_data[0], pk_data[1], pk_data[0], pk_data[1], bom, lp, disc)
         except Exception as e: print(f"Error during inline update: {e}")
         finally: self.table.blockSignals(False)
 
@@ -245,7 +241,7 @@ class ModuleItemsViewerDialog(QWidget):
         if not selected_pm: return
         # Extract PanelModQty from index 5 of the selected panel module lookup data
         mod_qty = float(selected_pm[5] or 1.0)
-        dialog = ModuleItemForm(selected_pm[6], module_item_data={"bom": mod_qty, "selection": "Selected"}, parent=self)
+        dialog = ModuleItemForm(selected_pm[6], module_item_data={"bom": mod_qty}, parent=self)
         if dialog.exec() == QDialog.Accepted:
             data = dialog.get_data()
             if data:
@@ -256,14 +252,13 @@ class ModuleItemsViewerDialog(QWidget):
         selected = self.table.selectedItems()
         if not selected: return
         row = selected[0].row(); pk_data = self.table.item(row, 0).data(Qt.UserRole)
-        # Indices match setup_ui: 0:ID, 1:Desc, 2:BOM, 3:LP, 4:Disc, 5:Selection
+        # Indices match setup_ui: 0:ID, 1:Desc, 2:BOM, 3:LP, 4:Disc
         current_data = {
             "module_type_id": pk_data[0], 
             "drive_description": pk_data[1], 
             "bom": float(self.table.item(row, 2).text() or 1.0), 
             "lp": float(self.table.item(row, 3).text() or 0.0), 
             "discount": float(self.table.item(row, 4).text().replace('%', '') or 0.0) / 100.0, 
-            "selection": "Selected" if self.table.item(row, 5).text() == "✅" else "Not Selected", 
             "sequence_number": row + 1
         }
         dialog = ModuleItemForm(pk_data[0], module_item_data=current_data, parent=self)

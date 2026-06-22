@@ -59,10 +59,6 @@ class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
         self.preview_btn.clicked.connect(self.show_preview)
         self.preview_btn.setToolTip("View and Manage the entire quotation hierarchy")
 
-        self.revision_btn = QPushButton("🔄 Revisions")
-        self.revision_btn.clicked.connect(self.show_revision)
-        self.revision_btn.setToolTip("Manage quotation revisions")
-        self.revision_btn.setEnabled(False)
 
         self.panels_btn = QPushButton("🔌 Panels")
         self.panels_btn.clicked.connect(self.show_panels)
@@ -82,7 +78,6 @@ class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
         sidebar_layout.addWidget(title)
         sidebar_layout.addWidget(self.quotations_btn)
         sidebar_layout.addWidget(self.preview_btn)
-        sidebar_layout.addWidget(self.revision_btn)
         sidebar_layout.addWidget(self.panels_btn)
         sidebar_layout.addWidget(self.panel_modules_btn)
         sidebar_layout.addWidget(self.items_btn)
@@ -175,7 +170,6 @@ class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
     def update_panels_button_state(self, enabled):
         self.panels_btn.setEnabled(enabled)
         self.panel_modules_btn.setEnabled(enabled)
-        self.revision_btn.setEnabled(enabled)
         self.items_btn.setEnabled(enabled)
 
     def show_common_specs(self):

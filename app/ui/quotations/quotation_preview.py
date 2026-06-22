@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 import pyodbc
+from datetime import datetime
 from app.ui.searchable_table import SearchableTable, NumericTableWidgetItem
 from app.services.quotation_service import QuotationService
 from app.ui.quotations.quotation_form import QuotationForm
@@ -16,6 +17,39 @@ from app.ui.quotations.ctc_constants import (
     GST_OPTIONS, FREIGHT_OPTIONS, PAYMENT_OPTIONS, WARRANTY_OPTIONS,
     VALIDITY_OPTIONS, PACKING_OPTIONS, INSPECTION_OPTIONS, DELIVERY_OPTIONS
 )
+
+def format_indian_currency(value):
+    try:
+        val = float(value)
+    except (ValueError, TypeError):
+        return str(value)
+    
+    is_negative = val < 0
+    val = abs(val)
+    
+    val_str = f"{val:.2f}"
+    
+    if "." in val_str:
+        integer_part, decimal_part = val_str.split(".")
+    else:
+        integer_part, decimal_part = val_str, "00"
+        
+    if len(integer_part) > 3:
+        last_three = integer_part[-3:]
+        other_digits = integer_part[:-3]
+        
+        groups = []
+        while len(other_digits) > 0:
+            groups.append(other_digits[-2:])
+            other_digits = other_digits[:-2]
+            
+        groups.reverse()
+        formatted_integer = ",".join(groups) + "," + last_three
+    else:
+        formatted_integer = integer_part
+        
+    result = formatted_integer + "." + decimal_part
+    return "-" + result if is_negative else result
 
 class QuotationPreviewPage(QWidget):
     """
@@ -91,10 +125,11 @@ class QuotationPreviewPage(QWidget):
             t1, c1 = self._add_customer_details(customer_id) if customer_id else (None, None)
             t2, c2 = self._add_quotation_ctc_form()
             t3, c3 = self._add_common_specs_form()
+            t4, c4 = self._add_revision_table()
 
             def toggle_all(checked):
                 btn_collapse_all.setText("Expand All Forms" if checked else "Collapse All Forms")
-                for t, c in [(t1, c1), (t2, c2), (t3, c3)]:
+                for t, c in [(t1, c1), (t2, c2), (t3, c3), (t4, c4)]:
                     if t and c:
                         t.setChecked(not checked)
                         self._toggle_container(not checked, c, t)
@@ -119,14 +154,14 @@ class QuotationPreviewPage(QWidget):
                 m_qty = m_row[5]
                 mt_id = m_row[6]
                 m_items = self.service.get_module_items_by_module_type_id(mt_id)
-                total_items_amount = sum(float(item[7] or 0) for item in m_items)
+                total_items_amount = sum(float(item[6] or 0) for item in m_items)
                 p_panel_total += float(m_qty or 0) * total_items_amount
             grand_total += p_panel_total * p_qty
 
         panel_section_header = QHBoxLayout()
         panel_title = QLabel(f"Panels ({len(panels)})")
         panel_title.setStyleSheet("font-size: 20px; font-weight: bold; color: #0f172a; margin-top: 10px;")
-        grand_total_lbl = QLabel(f"<b>Total Quotation Price =</b> ₹{grand_total:,.2f}")
+        grand_total_lbl = QLabel(f"<b>Total Quotation Price =</b> ₹{format_indian_currency(grand_total)}")
         grand_total_lbl.setStyleSheet("font-size: 18px; color: #b91c1c; font-weight: bold; margin-top: 10px; margin-left: 20px;")
         
         btn_collapse_panels = QPushButton("Collapse All Panels")
@@ -199,7 +234,7 @@ class QuotationPreviewPage(QWidget):
             m_qty = m_row[5]
             mt_id = m_row[6]
             m_items = self.service.get_module_items_by_module_type_id(mt_id)
-            total_items_amount = sum(float(item[7] or 0) for item in m_items)
+            total_items_amount = sum(float(item[6] or 0) for item in m_items)
             panel_total += float(m_qty or 0) * total_items_amount
         total_panel_cost = panel_total * panel_qty
 
@@ -222,7 +257,7 @@ class QuotationPreviewPage(QWidget):
         p_info.setStyleSheet("border: none; font-size: 14px; color: #1e293b;")
         
         # Panel Cost Label
-        total_panel_lbl = QLabel(f"<b>Qty =</b> {panel_qty} | <b>Unit Panel Cost =</b> ₹{panel_total:,.2f} | <b>Total Panel Cost =</b> ₹{total_panel_cost:,.2f}")
+        total_panel_lbl = QLabel(f"<b>Qty =</b> {panel_qty} | <b>Unit Panel Cost =</b> ₹{format_indian_currency(panel_total)} | <b>Total Panel Cost =</b> ₹{format_indian_currency(total_panel_cost)}")
         total_panel_lbl.setStyleSheet("border: none; font-size: 14px; color: #2563eb; font-weight: bold; margin-left: 15px;")
 
         edit_btn = QPushButton("✏️")
@@ -268,7 +303,7 @@ class QuotationPreviewPage(QWidget):
         
         # Fetch items first to calculate total module cost
         items = self.service.get_module_items_by_module_type_id(mt_id)
-        total_items_amount = sum(float(item[7] or 0) for item in items)
+        total_items_amount = sum(float(item[6] or 0) for item in items)
         module_total = float(m_qty or 0) * total_items_amount
 
         mod_group = QGroupBox()
@@ -289,7 +324,7 @@ class QuotationPreviewPage(QWidget):
         mod_lbl.setStyleSheet("border: none; font-size: 13px; color: #334155;")
         
         # Total Module Cost Label
-        total_mod_lbl = QLabel(f"<b>Qty =</b> {m_qty} | <b>Unit Module Cost =</b> ₹{total_items_amount:,.2f} | <b>Module Total =</b> ₹{module_total:,.2f}")
+        total_mod_lbl = QLabel(f"<b>Qty =</b> {m_qty} | <b>Unit Module Cost =</b> ₹{format_indian_currency(total_items_amount)} | <b>Module Total =</b> ₹{format_indian_currency(module_total)}")
         total_mod_lbl.setStyleSheet("border: none; font-size: 13px; color: #059669; font-weight: bold; margin-left: 15px;")
 
         m_edit_btn = QPushButton("✏️")
@@ -343,13 +378,13 @@ class QuotationPreviewPage(QWidget):
             table.setEditTriggers(QTableWidget.NoEditTriggers)
             
             for r, item in enumerate(items):
-                # SQL indices: 0:ID, 1:Desc, 2:BOM, 3:LP, 4:Disc, 5:Selection, 6:Make, 7:Amount
+                # SQL indices: 0:ID, 1:Desc, 2:BOM, 3:LP, 4:Disc, 5:Make, 6:Amount
                 table.setItem(r, 0, QTableWidgetItem(str(item[1])))
-                table.setItem(r, 1, QTableWidgetItem(str(item[6] or "")))
+                table.setItem(r, 1, QTableWidgetItem(str(item[5] or "")))
                 table.setItem(r, 2, QTableWidgetItem(str(item[2])))
-                table.setItem(r, 3, QTableWidgetItem(f"{item[3]:,.2f}"))
+                table.setItem(r, 3, QTableWidgetItem(f"{format_indian_currency(item[3])}"))
                 table.setItem(r, 4, QTableWidgetItem(f"{item[4]*100:.1f}%"))
-                table.setItem(r, 5, QTableWidgetItem(f"{item[7]:,.2f}"))
+                table.setItem(r, 5, QTableWidgetItem(f"{format_indian_currency(item[6])}"))
 
                 # Row Actions
                 actions_widget = QWidget()
@@ -459,7 +494,7 @@ class QuotationPreviewPage(QWidget):
 
     def _add_item(self, mt_id, panel_mod_qty):
         # The ModuleItemForm expects module_type_id as the first argument
-        dialog = ModuleItemForm(mt_id, module_item_data={"bom": panel_mod_qty, "selection": "Selected"}, parent=self)
+        dialog = ModuleItemForm(mt_id, module_item_data={"bom": panel_mod_qty}, parent=self)
         if dialog.exec():
             d = dialog.get_data()
             self.service.create_module_item(
@@ -467,21 +502,19 @@ class QuotationPreviewPage(QWidget):
                 d["drive_description"],
                 d["bom"],
                 d["lp"],
-                d["discount"],
-                d["selection"]
+                d["discount"]
             )
             self.refresh_view()
 
     def _edit_item(self, mt_id, item_row):
-        # item_row: (ID, DriveDescription, BOM, LP, Disc, Selection)
+        # item_row: (ID, DriveDescription, BOM, LP, Disc)
         old_desc = item_row[1]
         current_data = {
             "module_type_id": mt_id, # This is the ID for tbl_PnlModuleType
             "drive_description": item_row[1],
             "bom": float(item_row[2] or 0),
             "lp": float(item_row[3] or 0),
-            "discount": float(item_row[4] or 0),
-            "selection": item_row[5]
+            "discount": float(item_row[4] or 0)
         }
         # ModuleItemForm expects module_type_id as the first argument
         dialog = ModuleItemForm(mt_id, module_item_data=current_data, parent=self)
@@ -489,7 +522,7 @@ class QuotationPreviewPage(QWidget):
             d = dialog.get_data()
             self.service.update_module_item(
                 mt_id, old_desc,  # Old PK components
-                d["module_type_id"], d["drive_description"], d["bom"], d["lp"], d["discount"], d["selection"] # New Data components
+                d["module_type_id"], d["drive_description"], d["bom"], d["lp"], d["discount"] # New Data components
             )
             self.refresh_view()
 
@@ -769,3 +802,124 @@ class QuotationPreviewPage(QWidget):
             QMessageBox.information(self, "Success", "Common specifications saved successfully.")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to save Common Specs: {e}")
+
+    def _add_revision_table(self):
+        """Adds a collapsible Revision History section to the Quotation Process page."""
+        group = QGroupBox()
+        group.setStyleSheet(
+            "QGroupBox { border: 1px solid #cbd5e1; border-radius: 8px; margin-top: 10px; padding: 10px; }"
+        )
+        layout = QVBoxLayout(group)
+
+        # ── header row ──────────────────────────────────────────────────────────
+        header = QHBoxLayout()
+
+        toggle_btn = QPushButton("▼")
+        toggle_btn.setFixedSize(24, 24)
+        toggle_btn.setCheckable(True)
+        toggle_btn.setChecked(True)
+        toggle_btn.setStyleSheet(
+            "font-weight: bold; border: none; background: transparent; color: #1e293b;"
+        )
+
+        title_lbl = QLabel("<b>Revision History</b>")
+        title_lbl.setStyleSheet("border: none; font-size: 14px;")
+
+        add_rev_btn = QPushButton("➕ Add Revision")
+        add_rev_btn.setFixedHeight(24)
+        add_rev_btn.clicked.connect(self._add_revision_from_preview)
+
+        header.addWidget(toggle_btn)
+        header.addWidget(title_lbl)
+        header.addStretch()
+        header.addWidget(add_rev_btn)
+        layout.addLayout(header)
+
+        # ── collapsible container ────────────────────────────────────────────────
+        container = QWidget()
+        container_layout = QVBoxLayout(container)
+        container.setContentsMargins(0, 0, 0, 0)
+        toggle_btn.clicked.connect(
+            lambda checked: self._toggle_container(checked, container, toggle_btn)
+        )
+        layout.addWidget(container)
+
+        # ── revision table ───────────────────────────────────────────────────────
+        try:
+            rows = self.service.get_revisions_list(self.quote_id)
+
+            self._revision_table = QTableWidget(len(rows), 3)
+            self._revision_table.setHorizontalHeaderLabels(["Rev No", "Date", "Description"])
+            self._revision_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+            self._revision_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+            self._revision_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+            self._revision_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            self._revision_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            self._revision_table.setSelectionBehavior(QTableWidget.SelectRows)
+
+            # Map DB result: (ID, QuoteID, RevisionNo, QuoteRevisionDate, QuoteRevisionDescription)
+            for r, row in enumerate(rows):
+                rev_no_item = QTableWidgetItem(str(row[2]) if row[2] is not None else "")
+                rev_no_item.setFlags(rev_no_item.flags() & ~Qt.ItemIsEditable)
+
+                date_val = row[3]
+                if isinstance(date_val, datetime):
+                    date_str = date_val.strftime("%d-%b-%Y %H:%M")
+                else:
+                    date_str = str(date_val) if date_val is not None else ""
+                date_item = QTableWidgetItem(date_str)
+                date_item.setFlags(date_item.flags() & ~Qt.ItemIsEditable)
+
+                desc_item = QTableWidgetItem(str(row[4]) if row[4] is not None else "")
+                # Description column is editable
+                desc_item.setData(Qt.UserRole, row[0])  # store revision ID
+
+                self._revision_table.setItem(r, 0, rev_no_item)
+                self._revision_table.setItem(r, 1, date_item)
+                self._revision_table.setItem(r, 2, desc_item)
+
+            # Wire up inline description editing
+            self._revision_table.itemChanged.connect(self._on_revision_desc_changed)
+
+            # Fit height to content
+            self._revision_table.resizeRowsToContents()
+            row_count = max(len(rows), 1)
+            total_height = (
+                self._revision_table.horizontalHeader().height()
+                + self._revision_table.rowHeight(0) * row_count
+                + 10
+            ) if len(rows) > 0 else (
+                self._revision_table.horizontalHeader().height() + 40
+            )
+            self._revision_table.setFixedHeight(min(total_height, 250))
+
+            container_layout.addWidget(self._revision_table)
+
+        except Exception as e:
+            container_layout.addWidget(QLabel(f"Failed to load revisions: {e}"))
+
+        self.content_layout.addWidget(group)
+        return toggle_btn, container
+
+    def _on_revision_desc_changed(self, item):
+        """Saves an edited revision description inline."""
+        if item.column() != 2:
+            return
+        rev_id = item.data(Qt.UserRole)
+        if rev_id is None:
+            return
+        self._revision_table.blockSignals(True)
+        try:
+            self.service.update_revision_field(rev_id, "QuoteRevisionDescription", item.text())
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to update revision: {e}")
+        finally:
+            self._revision_table.blockSignals(False)
+
+    def _add_revision_from_preview(self):
+        """Creates a new revision for the current quotation and refreshes the view."""
+        try:
+            self.service.create_revision(self.quote_id)
+            self.refresh_view()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))

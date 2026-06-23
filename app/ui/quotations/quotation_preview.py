@@ -11,6 +11,7 @@ from app.services.quotation_service import QuotationService
 from app.ui.quotations.quotation_form import QuotationForm
 from app.ui.quotations.panels.panel_form import PanelForm
 from app.ui.quotations.modules.panel_module_form import PanelModuleForm
+from app.ui.quotations.modules.panel_module_page import INGOG_LIST, POLE_LIST, KA_LIST, RELEASE_LIST, PROTECTION_LIST
 from app.ui.quotations.module_items.module_item_form import ModuleItemForm
 from app.ui.quotations.module_items.select_module_items_dialog import SelectModuleItemsDialog
 from app.ui.quotations.ctc_constants import (
@@ -61,6 +62,7 @@ class QuotationPreviewPage(QWidget):
         self.service = QuotationService()
         self.quote_id = None
         self.project_name = ""
+        self.panel_expanded_states = {}
         self.setup_ui()
 
     def setup_ui(self):
@@ -183,19 +185,21 @@ class QuotationPreviewPage(QWidget):
         for p_row in panels:
             t, c = self._add_panel_widget(p_row)
             if t and c:
-                self.panel_toggles.append((t, c))
+                self.panel_toggles.append((t, c, p_row[0]))
 
         def toggle_all_panels(checked):
             btn_collapse_panels.setText("Expand All Panels" if checked else "Collapse All Panels")
-            for t, c in self.panel_toggles:
+            for t, c, pid in self.panel_toggles:
                 t.setChecked(not checked)
-                self._toggle_container(not checked, c, t)
+                self._on_panel_toggled(not checked, pid, c, t)
 
         btn_collapse_panels.clicked.connect(toggle_all_panels)
         
-        # Collapse panels by default
-        btn_collapse_panels.setChecked(True)
-        toggle_all_panels(True)
+        # If it's the very first load, we might want to collapse all. But we respect stored states.
+        # Check if any panel has a state stored, if not, default to collapse all.
+        if not self.panel_expanded_states:
+            btn_collapse_panels.setChecked(True)
+            toggle_all_panels(True)
 
         self.content_layout.addStretch()
 
@@ -247,10 +251,14 @@ class QuotationPreviewPage(QWidget):
         header = QHBoxLayout()
 
         # Toggle Button
-        toggle_btn = QPushButton("▼")
+        toggle_btn = QPushButton()
         toggle_btn.setFixedSize(24, 24)
         toggle_btn.setCheckable(True)
-        toggle_btn.setChecked(True)
+        
+        # Restore toggle state, default to collapsed (False)
+        is_expanded = self.panel_expanded_states.get(pid, False)
+        toggle_btn.setChecked(is_expanded)
+        toggle_btn.setText("▼" if is_expanded else "▶")
         toggle_btn.setStyleSheet("font-weight: bold; border: none; background: transparent; color: #1e293b;")
 
         p_info = QLabel(f"<b>Panel:</b> {name} ({cat}) | <b>Qty:</b> {qty} | <b>Dim:</b> {l}x{h}x{d}")
@@ -286,7 +294,10 @@ class QuotationPreviewPage(QWidget):
         modules_layout = QVBoxLayout(modules_container)
         modules_container.setContentsMargins(0, 0, 0, 0)
         
-        toggle_btn.clicked.connect(lambda checked: self._toggle_container(checked, modules_container, toggle_btn))
+        # Set initial visibility
+        modules_container.setVisible(is_expanded)
+        
+        toggle_btn.clicked.connect(lambda checked, p=pid, c=modules_container, btn=toggle_btn: self._on_panel_toggled(checked, p, c, btn))
         layout.addWidget(modules_container)
 
         # Modules Section
@@ -418,6 +429,10 @@ class QuotationPreviewPage(QWidget):
         container.setVisible(checked)
         button.setText("▼" if checked else "▶")
 
+    def _on_panel_toggled(self, checked, pid, container, button):
+        self.panel_expanded_states[pid] = checked
+        self._toggle_container(checked, container, button)
+
     # --- CRUD Actions Leveraging Existing Logic ---
 
     def _edit_quotation(self, data):
@@ -458,8 +473,11 @@ class QuotationPreviewPage(QWidget):
             self.service.delete_panel(panel_id)
             self.refresh_view()
 
+    def _get_dropdown_data(self):
+        return {"ingog": INGOG_LIST, "pole": POLE_LIST, "ka": KA_LIST, "release": RELEASE_LIST, "protection": PROTECTION_LIST}
+
     def _add_module(self, panel_id):
-        dialog = PanelModuleForm(self.quote_id, panel_id=panel_id, parent=self)
+        dialog = PanelModuleForm(self.quote_id, panel_id=panel_id, parent=self, dropdown_lists=self._get_dropdown_data())
         if dialog.exec():
             data = dialog.get_data()
             self.service.create_panel_module(**data)
@@ -482,7 +500,7 @@ class QuotationPreviewPage(QWidget):
             "protection": m_row[11],
             "remark": m_row[12]
         }
-        dialog = PanelModuleForm(self.quote_id, panel_id=panel_id, pm_data=current_data, parent=self)
+        dialog = PanelModuleForm(self.quote_id, panel_id=panel_id, pm_data=current_data, parent=self, dropdown_lists=self._get_dropdown_data())
         if dialog.exec():
             self.service.update_panel_module(pm_id, **dialog.get_data())
             self.refresh_view()

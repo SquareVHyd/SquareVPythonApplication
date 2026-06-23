@@ -642,7 +642,7 @@ class QuotationService:
                             "BottomTopQty", "BottomSteelSize", "TypeOfSeating", "Canopy", "CableEntry",
                             "Mounting", "DoubleDoor", "DrawoutFixed", "IndoorOutdoor", "PanelFace", "ProtectionClass",
                             "SeatStand", "StandMetalSize"
-                        ) VALUES (:pid, 0, 'CRCA 1.2 mm', 0, 'CRCA 1.2 mm', 0, 'CRCA 1.2 mm', 'ISMC', 'No', 'Top',
+                        ) VALUES (:pid, 2, 'CRCA 2 mm', 2, 'CRCA 2 mm', 2, 'CRCA 2 mm', 'ISMC', 'No', 'Top',
                                     'free stand', 'No', 'No', 'Indoor', 'single', 'IP 44', 'No', '0')
                         """)
                         session.execute(query, {"pid": pid})
@@ -1658,4 +1658,4 @@ class QuotationService:
                         total_weight += qty * kg_m
                     except ValueError:
                         pass
-        return total_weight * unit_cost
+        return total_weight * unit_cost

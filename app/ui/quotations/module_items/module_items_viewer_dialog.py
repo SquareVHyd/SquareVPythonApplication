@@ -54,20 +54,33 @@ class ModuleItemsViewerDialog(QWidget):
         
         self.edit_btn = QPushButton("✏️ Edit Item"); self.edit_btn.clicked.connect(self._edit_item)
         self.delete_btn = QPushButton("🗑️ Delete Item"); self.delete_btn.clicked.connect(self._delete_item)
+        
         actions.addWidget(self.add_btn); actions.addWidget(self.add_from_mod_btn); actions.addWidget(self.edit_btn); actions.addWidget(self.delete_btn)
         actions.addStretch(); layout.addLayout(actions)
-        self.table = SearchableTable(); self.table.setColumnCount(5)
-        self.table.setHorizontalHeaderLabels(["ID", "DriveDescription", "BOM", "LP", "%Discount"])
+        self.table = SearchableTable(); self.table.setColumnCount(7)
+        self.table.setHorizontalHeaderLabels(["ID", "DriveDescription", "Make", "BOM", "LP", "%Discount", "Total Amount"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows); self.table.setSortingEnabled(True)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive); self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.table.setItemDelegateForColumn(2, DoubleSpinBoxDelegate(self, min_val=1.0))
-        self.table.setItemDelegateForColumn(3, DoubleSpinBoxDelegate(self, min_val=1.0))
-        self.table.setItemDelegateForColumn(4, DoubleSpinBoxDelegate(self, min_val=0.0, max_val=100.0))
+        self.table.setItemDelegateForColumn(3, DoubleSpinBoxDelegate(self, min_val=0.0))
+        self.table.setItemDelegateForColumn(4, DoubleSpinBoxDelegate(self, min_val=0.0))
+        self.table.setItemDelegateForColumn(5, DoubleSpinBoxDelegate(self, min_val=0.0, max_val=100.0))
         
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._show_context_menu)
         
         layout.addWidget(self.table)
+        
+        # Summary footer
+        self.summary_frame = QWidget()
+        self.summary_frame.setStyleSheet("background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 4px;")
+        summary_layout = QHBoxLayout(self.summary_frame)
+        summary_layout.setContentsMargins(10, 10, 10, 10)
+        self.summary_lbl = QLabel("Overall Discount: 0.00% | Total List Price: ₹0.00 | Total Price: ₹0.00")
+        self.summary_lbl.setStyleSheet("font-size: 14px; font-weight: bold; color: #1e293b;")
+        summary_layout.addStretch()
+        summary_layout.addWidget(self.summary_lbl)
+        layout.addWidget(self.summary_frame)
+        
         self.status_bar = QStatusBar(); layout.addWidget(self.status_bar)
         QShortcut(QKeySequence("Ctrl+N"), self, activated=self._add_item)
         QShortcut(QKeySequence("Ctrl+E"), self, activated=self._edit_item)
@@ -138,9 +151,10 @@ class ModuleItemsViewerDialog(QWidget):
                             mi."DriveDescription",
                             SUM(
                                 COALESCE(p."PanelQty", 1) * 
+                                COALESCE(pm."PanelModQty", 1) *
                                 CASE 
                                     WHEN mi."BOM" IS NOT NULL AND mi."BOM" <> 0 THEN mi."BOM" 
-                                    ELSE COALESCE(pm."PanelModQty", 1) 
+                                    ELSE 1
                                 END
                             ) as "TotalBOM",
                             MAX(mi."LP") as "LP",
@@ -168,26 +182,64 @@ class ModuleItemsViewerDialog(QWidget):
         self.table.setColumnHidden(0, is_summary)
         for r, row in enumerate(rows):
             mt_id, desc, bom, lp, disc, make, model = row
-            # Default to the module's quantity (PanelModQty) if the item's BOM is not specified or zero
             bom_val = float(bom) if (bom is not None and float(bom) != 0) else float(mod_qty)
+            if not is_summary:
+                # If not summary, the query gives us item BOM but we need to account for mod_qty if it's default 0/null
+                bom_val = float(bom) if (bom is not None and float(bom) != 0) else float(mod_qty)
+            else:
+                # If summary, the query ALREADY calculated TotalBOM
+                bom_val = float(bom) if bom is not None else 0.0
+
             lp_val, disc_val = float(lp or 0), float(disc or 0)
-            data = [mt_id, desc, bom_val, lp_val, f"{disc_val*100:.2f}%"]
+            total_amount = bom_val * lp_val * (1 - disc_val)
+            
+            data = [mt_id, desc, str(make or ""), bom_val, lp_val, f"{disc_val*100:.2f}%", f"₹{total_amount:,.2f}"]
             self._cache.append(row)
             for c, val in enumerate(data):
                 item = NumericTableWidgetItem(str(val))
-                if (not is_summary and c in {2, 3, 4}) or (is_summary and c in {3, 4}): 
+                if (not is_summary and c in {3, 4, 5}) or (is_summary and c in {4, 5}): 
                     item.setFlags(item.flags() | Qt.ItemIsEditable)
                 else: item.setFlags(item.flags() & ~Qt.ItemIsEditable)
                 if c == 0: item.setData(Qt.UserRole, (mt_id, desc))
                 self.table.setItem(r, c, item)
         self.table.setSortingEnabled(True); self.table.resizeColumnsToContents(); self.table.blockSignals(False)
+        self._update_summary_labels()
         msg = f"Loaded {len(rows)} unique items (Summary view)" if is_summary else f"Loaded {len(rows)} items for module type ID: {mt_id_for_status}"
         self.status_bar.showMessage(msg)
         self._worker = None
 
+    def _update_summary_labels(self):
+        sum_lp = 0.0
+        sum_total = 0.0
+        
+        def safe_num(text, default=0.0):
+            try: return float(text.replace('₹', '').replace(',', '').replace('%', '').strip() or default)
+            except: return default
+
+        for r in range(self.table.rowCount()):
+            bom = safe_num(self.table.item(r, 3).text(), 0.0)
+            lp = safe_num(self.table.item(r, 4).text(), 0.0)
+            disc = safe_num(self.table.item(r, 5).text(), 0.0) / 100.0
+            
+            row_lp = bom * lp
+            row_total = row_lp * (1 - disc)
+            
+            sum_lp += row_lp
+            sum_total += row_total
+            
+            # Optionally update the total amount column if it was triggered by a change
+            self.table.item(r, 6).setText(f"₹{row_total:,.2f}")
+
+        overall_disc = ((sum_lp - sum_total) / sum_lp * 100) if sum_lp > 0 else 0.0
+        self.summary_lbl.setText(
+            f"Overall Discount: {overall_disc:.2f}%  |  "
+            f"Total List Price: ₹{sum_lp:,.2f}  |  "
+            f"Total Price: ₹{sum_total:,.2f}"
+        )
+
     def _handle_item_changed(self, item):
         col = item.column()
-        if col not in {2, 3, 4}: return
+        if col not in {3, 4, 5}: return
         self.table.blockSignals(True)
         try:
             row = item.row()
@@ -198,9 +250,9 @@ class ModuleItemsViewerDialog(QWidget):
                 try: return float(text.replace('₹', '').replace(',', '').replace('%', '').strip() or default)
                 except: return default
             
-            bom = safe_num(self.table.item(row, 2).text(), 1.0)
-            lp = safe_num(self.table.item(row, 3).text(), 0.0)
-            disc = safe_num(self.table.item(row, 4).text(), 0.0) / 100.0
+            bom = safe_num(self.table.item(row, 3).text(), 1.0)
+            lp = safe_num(self.table.item(row, 4).text(), 0.0)
+            disc = safe_num(self.table.item(row, 5).text(), 0.0) / 100.0
             
             if is_summary:
                 # Bulk Update across the current scope (Quote or Panel)
@@ -227,6 +279,8 @@ class ModuleItemsViewerDialog(QWidget):
                     session.commit()
             else:
                 self.service.update_module_item(pk_data[0], pk_data[1], pk_data[0], pk_data[1], bom, lp, disc)
+                
+            self._update_summary_labels()
         except Exception as e: print(f"Error during inline update: {e}")
         finally: self.table.blockSignals(False)
 
@@ -256,13 +310,13 @@ class ModuleItemsViewerDialog(QWidget):
         selected = self.table.selectedItems()
         if not selected: return
         row = selected[0].row(); pk_data = self.table.item(row, 0).data(Qt.UserRole)
-        # Indices match setup_ui: 0:ID, 1:Desc, 2:BOM, 3:LP, 4:Disc
+        # Indices match setup_ui: 0:ID, 1:Desc, 2:Make, 3:BOM, 4:LP, 5:Disc
         current_data = {
             "module_type_id": pk_data[0], 
             "drive_description": pk_data[1], 
-            "bom": float(self.table.item(row, 2).text() or 1.0), 
-            "lp": float(self.table.item(row, 3).text() or 0.0), 
-            "discount": float(self.table.item(row, 4).text().replace('%', '') or 0.0) / 100.0, 
+            "bom": float(self.table.item(row, 3).text() or 1.0), 
+            "lp": float(self.table.item(row, 4).text() or 0.0), 
+            "discount": float(self.table.item(row, 5).text().replace('%', '') or 0.0) / 100.0, 
             "sequence_number": row + 1
         }
         dialog = ModuleItemForm(pk_data[0], module_item_data=current_data, parent=self)
@@ -308,9 +362,9 @@ class ModuleItemsViewerDialog(QWidget):
         current_data = {
             "module_type_id": mt_id,
             "drive_description": old_desc,
-            "bom": safe_num(self.table.item(row, 2).text(), 1.0),
-            "lp": safe_num(self.table.item(row, 3).text(), 0.0),
-            "discount": safe_num(self.table.item(row, 4).text(), 0.0) / 100.0,
+            "bom": safe_num(self.table.item(row, 3).text(), 1.0),
+            "lp": safe_num(self.table.item(row, 4).text(), 0.0),
+            "discount": safe_num(self.table.item(row, 5).text(), 0.0) / 100.0,
             "sequence_number": row + 1
         }
         
@@ -334,6 +388,7 @@ class ModuleItemsViewerDialog(QWidget):
                     QMessageBox.critical(self, "Error", str(e))
 
     def _debounce_search(self): self._search_timer.start(300)
+    
     def _perform_search(self):
         kw = self.search_box.text().lower().strip()
         if not kw: self._on_module_changed(); return

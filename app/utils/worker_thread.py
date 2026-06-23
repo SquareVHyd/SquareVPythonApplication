@@ -12,12 +12,19 @@ class Worker(QThread):
     error = Signal(str)
     result = Signal(object)
     
+    _active_workers = set()
+    
     def __init__(self, func, *args, **kwargs):
         super().__init__()
         self.func = func
         self.args = args
         self.kwargs = kwargs
-        self.finished.connect(self.deleteLater)
+        Worker._active_workers.add(self)
+        self.finished.connect(self._cleanup)
+        
+    def _cleanup(self):
+        Worker._active_workers.discard(self)
+        self.deleteLater()
     
     def run(self):
         """Execute the function in the worker thread."""

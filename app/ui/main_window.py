@@ -22,6 +22,7 @@ from app.config.ui_state import UIStateManager
 from app.ui.quotations.quotation_details_page import QuotationDetailsPage
 from app.ui.dashboard.dashboard_page import DashboardPage
 from app.ui.generic_spec.generic_spec_page import GenericSpecPage
+from app.ui.sld_analyzer.sld_page import SldPage
 
 
 class MainWindow(QMainWindow):
@@ -77,6 +78,7 @@ class MainWindow(QMainWindow):
         self.utilities_btn = QPushButton("🔧 Utilities")
         self.tools_btn = QPushButton("🛠️ Tools")
         self.master_btn = QPushButton("📋 Master Data")
+        self.sld_btn = QPushButton("📏 SLD Analyzer")
 
         self.dashboard_btn.setToolTip(self.shortcuts_tip)
         self.customers_btn.setToolTip(self.shortcuts_tip)
@@ -97,6 +99,7 @@ class MainWindow(QMainWindow):
         self.utilities_btn.clicked.connect(self.show_utilities)
         self.tools_btn.clicked.connect(self.show_tools)
         self.master_btn.clicked.connect(self.show_master)
+        self.sld_btn.clicked.connect(self.show_sld)
 
         self.help_btn = QPushButton("❓ Help")
         self.help_btn.setToolTip(self.shortcuts_tip)
@@ -118,6 +121,7 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(self.master_btn)
         sidebar_layout.addWidget(self.utilities_btn)
         sidebar_layout.addWidget(self.tools_btn)
+        sidebar_layout.addWidget(self.sld_btn)
         sidebar_layout.addWidget(self.help_btn)
         sidebar_layout.addWidget(self.quit_btn)
         sidebar_layout.addStretch()
@@ -135,6 +139,7 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(MasterDataPage())
         self.pages.addWidget(QuotationDetailsPage(self)) # Index 6
         self.pages.addWidget(GenericSpecPage()) # Index 7
+        self.pages.addWidget(SldPage()) # Index 8
 
         self.shortcut_help = QShortcut(QKeySequence("F1"), self)
         self.shortcut_help.activated.connect(self.show_shortcuts)
@@ -229,6 +234,10 @@ class MainWindow(QMainWindow):
     def show_master(self):
         self.pages.setCurrentIndex(5)
         UIStateManager.save_current_page(5)
+
+    def show_sld(self):
+        self.pages.setCurrentIndex(8)
+        UIStateManager.save_current_page(8)
 
     def show_quotation_details(self):
         """Switches to the Quotation Details page within the main window."""

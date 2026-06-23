@@ -2,7 +2,7 @@ import pyodbc
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
     QLineEdit, QLabel, QAbstractItemView, QMessageBox, QMenu, QStatusBar, QApplication,
-    QDialog, QHeaderView, QSplitter, QScrollArea, QGroupBox, QFormLayout
+    QDialog, QHeaderView, QSplitter, QScrollArea, QGroupBox, QFormLayout, QComboBox
 )
 from PySide6.QtCore import Qt, QTimer, QPoint
 from PySide6.QtGui import QShortcut, QKeySequence, QAction
@@ -80,13 +80,15 @@ class QuotationPage(QWidget):
         # Table
         self.table = SearchableTable()
         self.table.setStyleSheet("QTableView { selection-background-color: #93c5fd; selection-color: #000000; }") # Keep existing style
-        self.table.setColumnCount(11)
+        self.table.setColumnCount(14)
         self.table.setHorizontalHeaderLabels([
             "ID", "Customer ID", "Customer", "Req. Date", "Quote Date", "Ref No", 
-            "Subject", "Project", "Contact", "Prepared By", "Status"
+            "Subject", "Project", "Revision", "Contact", "Prepared By", "Status", "BaseQuoteID", "RevisionNo"
         ])
         self.table.hideColumn(0) # Hide Quote ID
         self.table.hideColumn(1) # Hide Customer ID
+        self.table.hideColumn(12) # Hide BaseQuoteID
+        self.table.hideColumn(13) # Hide RevisionNo
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSortingEnabled(True)
         
@@ -114,8 +116,83 @@ class QuotationPage(QWidget):
     def _on_selection_changed(self):
         """Enables the Panels button and updates the detail views."""
         selected = self.table.selectionModel().selectedRows()
+        is_single_selection = len(selected) == 1
         if hasattr(self.parent_quotation_details_page, 'update_panels_button_state'):
-            self.parent_quotation_details_page.update_panels_button_state(len(selected) == 1)
+            self.parent_quotation_details_page.update_panels_button_state(is_single_selection)
+            
+        if is_single_selection:
+            row = selected[0].row()
+            quote_id = int(self.table.item(row, 0).text())
+            base_quote_id = int(self.table.item(row, 12).text()) if self.table.item(row, 12) and self.table.item(row, 12).text() else quote_id
+            
+            # Populate sidebar combo
+            if hasattr(self.parent_quotation_details_page, 'populate_revisions'):
+                self.parent_quotation_details_page.populate_revisions(base_quote_id, quote_id)
+
+    def _on_table_revision_changed(self, row, combo):
+        quote_id = combo.currentData()
+        quote_data = self.service.get_quotation_by_id(quote_id)
+        if not quote_data: return
+        
+        self.table.blockSignals(True)
+        self.table.item(row, 0).setText(str(quote_data["ID"]))
+        
+        def _fmt_date(d):
+            return d.strftime('%Y-%m-%d') if d else ""
+        
+        if self.table.item(row, 3): self.table.item(row, 3).setText(_fmt_date(quote_data.get("DateOfRequest")))
+        if self.table.item(row, 4): self.table.item(row, 4).setText(_fmt_date(quote_data.get("Date_Quote")))
+        if self.table.item(row, 5): self.table.item(row, 5).setText(str(quote_data.get("QuoteRereceNo", "")))
+        if self.table.item(row, 6): self.table.item(row, 6).setText(str(quote_data.get("QuoteSubject", "")))
+        if self.table.item(row, 7): self.table.item(row, 7).setText(str(quote_data.get("QuoteProjectName", "")))
+        if self.table.item(row, 11): self.table.item(row, 11).setText(str(quote_data.get("QuoteStatus", "")))
+        if self.table.item(row, 13): self.table.item(row, 13).setText(str(quote_data.get("RevisionNo", "")))
+        
+        self.table.blockSignals(False)
+        
+        # Sync with sidebar if this row is selected
+        selected = self.table.selectionModel().selectedRows()
+        if len(selected) == 1 and selected[0].row() == row:
+            if hasattr(self.parent_quotation_details_page, 'revision_combo'):
+                cb = self.parent_quotation_details_page.revision_combo
+                cb.blockSignals(True)
+                for i in range(cb.count()):
+                    if cb.itemData(i) == quote_id:
+                        cb.setCurrentIndex(i)
+                        break
+                cb.blockSignals(False)
+                self.parent_quotation_details_page._on_revision_selected(cb.currentIndex())
+
+    def update_selected_row_with_quote(self, quote_id):
+        """Updates the selected row with the data of the specified quotation revision."""
+        selected = self.table.selectionModel().selectedRows()
+        if len(selected) == 1:
+            row = selected[0].row()
+            quote_data = self.service.get_quotation_by_id(quote_id)
+            if quote_data:
+                self.table.blockSignals(True)
+                self.table.item(row, 0).setText(str(quote_data["ID"]))
+                
+                def _fmt_date(d):
+                    return d.strftime('%Y-%m-%d') if d else ""
+                
+                if self.table.item(row, 3): self.table.item(row, 3).setText(_fmt_date(quote_data.get("DateOfRequest")))
+                if self.table.item(row, 4): self.table.item(row, 4).setText(_fmt_date(quote_data.get("Date_Quote")))
+                if self.table.item(row, 5): self.table.item(row, 5).setText(str(quote_data.get("QuoteRereceNo", "")))
+                if self.table.item(row, 6): self.table.item(row, 6).setText(str(quote_data.get("QuoteSubject", "")))
+                if self.table.item(row, 7): self.table.item(row, 7).setText(str(quote_data.get("QuoteProjectName", "")))
+                if self.table.item(row, 11): self.table.item(row, 11).setText(str(quote_data.get("QuoteStatus", "")))
+                if self.table.item(row, 13): self.table.item(row, 13).setText(str(quote_data.get("RevisionNo", "")))
+                
+                combo = self.table.cellWidget(row, 8)
+                if combo:
+                    combo.blockSignals(True)
+                    for i in range(combo.count()):
+                        if combo.itemData(i) == quote_id:
+                            combo.setCurrentIndex(i)
+                            break
+                    combo.blockSignals(False)
+                self.table.blockSignals(False)
 
     def add_quotation(self):
         """Opens the form to add a new quotation."""
@@ -147,9 +224,9 @@ class QuotationPage(QWidget):
             "ref_no": self.table.item(row, 5).text(),
             "subject": self.table.item(row, 6).text(),
             "project": self.table.item(row, 7).text(),
-            "contact": self.table.item(row, 8).text(),
-            "prepared_by": self.table.item(row, 9).text(),
-            "status": self.table.item(row, 10).text(),
+            "contact": self.table.item(row, 9).text(),
+            "prepared_by": self.table.item(row, 10).text(),
+            "status": self.table.item(row, 11).text(),
         }
 
         dialog = QuotationForm(self, quotation_data=current_data)
@@ -248,12 +325,38 @@ class QuotationPage(QWidget):
         self.table.blockSignals(True)
         self.table.setSortingEnabled(False)
         self.table.setRowCount(len(rows))
+        
+        grouped_revisions = self.service.get_all_revisions_grouped()
+        
         for r, row in enumerate(rows):
-            for c in range(len(row)):
-                val = str(row[c]) if row[c] is not None else ""
-                item = NumericTableWidgetItem(val)
+            id_val = row[0]
+            base_quote_id = row[11] if row[11] else id_val
+            
+            mappings = [
+                (0, row[0]), (1, row[1]), (2, row[2]), (3, row[3]), (4, row[4]), 
+                (5, row[5]), (6, row[6]), (7, row[7]), (9, row[8]), (10, row[9]), 
+                (11, row[10]), (12, row[11]), (13, row[12])
+            ]
+            for col_idx, val in mappings:
+                val_str = str(val) if val is not None else ""
+                item = NumericTableWidgetItem(val_str)
                 item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                self.table.setItem(r, c, item)
+                self.table.setItem(r, col_idx, item)
+                
+            # Create Revision Combo Box in col 8
+            combo = QComboBox()
+            revisions = grouped_revisions.get(base_quote_id, [])
+            active_idx = 0
+            for i, rev in enumerate(revisions):
+                text = f"Rev {rev.get('RevisionNo', 0)} ({rev.get('QuoteRereceNo', '')})"
+                combo.addItem(text, rev.get("ID"))
+                if rev.get("ID") == id_val:
+                    active_idx = i
+            combo.setCurrentIndex(active_idx)
+            combo.currentIndexChanged.connect(lambda idx, c=combo, tr_row=r: self._on_table_revision_changed(tr_row, c))
+            
+            self.table.setCellWidget(r, 8, combo)
+
         self.table.setSortingEnabled(True)
         self.table.blockSignals(False)
         self.table.resizeColumnsToContents()
@@ -289,15 +392,40 @@ class QuotationPage(QWidget):
         items_action.triggered.connect(lambda: self.parent_quotation_details_page.show_items())
         menu.addAction(items_action)
 
-        rev_action = QAction(f"🔄 Revisions: {project_name}", self)
+        rev_action = QAction(f"🔄 View Revisions: {project_name}", self)
         rev_action.triggered.connect(self._open_revisions)
         menu.addAction(rev_action)
+        
+        add_rev_action = QAction(f"➕ Create New Revision", self)
+        add_rev_action.triggered.connect(lambda: self._create_revision_from_menu(quote_id))
+        menu.addAction(add_rev_action)
 
         preview_action = QAction(f"👁️ Preview Quotation: {project_name}", self)
         preview_action.triggered.connect(lambda: self._open_quotation_preview(quote_id))
         menu.addAction(preview_action)
 
         menu.exec(self.table.viewport().mapToGlobal(pos))
+
+    def _create_revision_from_menu(self, quote_id):
+        try:
+            # We fetch base quote ID directly here since we have it in the table
+            selected = self.table.selectionModel().selectedRows()
+            if not selected: return
+            row = selected[0].row()
+            base_quote_id = int(self.table.item(row, 12).text()) if self.table.item(row, 12) and self.table.item(row, 12).text() else quote_id
+            
+            new_quote_id = self.service.create_revision(quote_id)
+            QMessageBox.information(self, "Success", "Revision created successfully.")
+            
+            # Refresh table to show new revision
+            self.refresh_table()
+            
+            # Update main window combobox and switch context
+            if hasattr(self.parent_quotation_details_page, 'populate_revisions'):
+                self.parent_quotation_details_page.populate_revisions(base_quote_id, new_quote_id)
+                self.parent_quotation_details_page.show_revision()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to create revision: {e}")
 
     def _open_common_specs(self):
         if self.parent_quotation_details_page:

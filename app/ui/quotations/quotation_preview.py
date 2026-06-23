@@ -563,31 +563,50 @@ class QuotationPreviewPage(QWidget):
         toggle_btn.clicked.connect(lambda checked: self._toggle_container(checked, container, toggle_btn))
         layout.addWidget(container)
         
-        table = SearchableTable()
+        table = QTableWidget()
         try:
-            conn = pyodbc.connect('DSN=PostgreSQL35W;')
-            cursor = conn.cursor()
-            cursor.execute('SELECT * FROM public."tblCustomers" WHERE "ID" = ?', (customer_id,))
-            columns = [col[0] for col in cursor.description]
-            rows = cursor.fetchall()
-            conn.close()
+            from app.config.database import get_session
+            from sqlalchemy import text
+            with get_session() as session:
+                result = session.execute(text('SELECT * FROM public."tblCustomers" WHERE "ID" = :id'), {"id": customer_id})
+                columns = list(result.keys())
+                rows = result.fetchall()
 
-            table.setColumnCount(len(columns))
-            table.setHorizontalHeaderLabels(columns)
-            table.setRowCount(len(rows))
+            table.setColumnCount(2)
+            table.setHorizontalHeaderLabels(["Field", "Value"])
+            table.setRowCount(len(columns))
 
-            for r, row in enumerate(rows):
-                for c, val in enumerate(row):
-                    text = str(val) if val is not None else ""
-                    item = NumericTableWidgetItem(text)
-                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                    table.setItem(r, c, item)
-
-            table.resizeColumnsToContents()
-            total_height = table.horizontalHeader().height() + 52
             if len(rows) > 0:
-                total_height += table.rowHeight(0) * len(rows)
-            table.setFixedHeight(min(total_height, 150))
+                row_data = rows[0]
+                for r, col_name in enumerate(columns):
+                    item_key = QTableWidgetItem(str(col_name))
+                    item_key.setFlags(item_key.flags() & ~Qt.ItemIsEditable)
+                    
+                    val = row_data[r]
+                    text_val = str(val) if val is not None else ""
+                    item_val = QTableWidgetItem(text_val)
+                    item_val.setFlags(item_val.flags() & ~Qt.ItemIsEditable)
+                    
+                    table.setItem(r, 0, item_key)
+                    table.setItem(r, 1, item_val)
+
+            table.verticalHeader().hide()
+            table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+            table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+            table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            table.setSelectionBehavior(QTableWidget.SelectRows)
+            table.setAlternatingRowColors(True)
+            table.setStyleSheet(
+                "QTableWidget { gridline-color: #e1e1e1; border: 1px solid #d9d9d9; }"
+                "QHeaderView::section { background-color: #f7f7f7; padding: 6px; border: 1px solid #d9d9d9; font-weight: bold; }"
+                "QTableView { selection-background-color: #93c5fd; selection-color: #000000; }"
+            )
+
+            total_height = table.horizontalHeader().height() + 2
+            if len(columns) > 0:
+                total_height += table.rowHeight(0) * len(columns)
+            table.setFixedHeight(min(total_height, 250))
             
             container_layout.addWidget(table)
             self.content_layout.addWidget(group)
@@ -846,40 +865,48 @@ class QuotationPreviewPage(QWidget):
 
         # ── revision table ───────────────────────────────────────────────────────
         try:
-            rows = self.service.get_revisions_list(self.quote_id)
+            quote_data = self.service.get_quotation_by_id(self.quote_id)
+            base_quote_id = quote_data.get("BaseQuoteID") if quote_data and quote_data.get("BaseQuoteID") else self.quote_id
+                
+            rows = self.service.get_revisions_for_quote(base_quote_id)
 
-            self._revision_table = QTableWidget(len(rows), 3)
-            self._revision_table.setHorizontalHeaderLabels(["Rev No", "Date", "Description"])
-            self._revision_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+            self._revision_table = QTableWidget(len(rows), 4)
+            self._revision_table.setHorizontalHeaderLabels(["ID", "Revision No", "Date", "Project"])
+            self._revision_table.hideColumn(0)
             self._revision_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-            self._revision_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+            self._revision_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+            self._revision_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
             self._revision_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             self._revision_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             self._revision_table.setSelectionBehavior(QTableWidget.SelectRows)
 
-            # Map DB result: (ID, QuoteID, RevisionNo, QuoteRevisionDate, QuoteRevisionDescription)
             for r, row in enumerate(rows):
-                rev_no_item = QTableWidgetItem(str(row[2]) if row[2] is not None else "")
+                id_item = QTableWidgetItem(str(row.get("ID", "")))
+                
+                rev_no = row.get("RevisionNo", 0)
+                rev_no_item = QTableWidgetItem(str(rev_no))
                 rev_no_item.setFlags(rev_no_item.flags() & ~Qt.ItemIsEditable)
 
-                date_val = row[3]
+                date_val = row.get("Date_Quote")
                 if isinstance(date_val, datetime):
-                    date_str = date_val.strftime("%d-%b-%Y %H:%M")
+                    date_str = date_val.strftime("%d-%b-%Y")
                 else:
                     date_str = str(date_val) if date_val is not None else ""
                 date_item = QTableWidgetItem(date_str)
                 date_item.setFlags(date_item.flags() & ~Qt.ItemIsEditable)
 
-                desc_item = QTableWidgetItem(str(row[4]) if row[4] is not None else "")
-                # Description column is editable
-                desc_item.setData(Qt.UserRole, row[0])  # store revision ID
+                desc_item = QTableWidgetItem(str(row.get("QuoteProjectName", "")))
+                desc_item.setFlags(desc_item.flags() & ~Qt.ItemIsEditable)
 
-                self._revision_table.setItem(r, 0, rev_no_item)
-                self._revision_table.setItem(r, 1, date_item)
-                self._revision_table.setItem(r, 2, desc_item)
-
-            # Wire up inline description editing
-            self._revision_table.itemChanged.connect(self._on_revision_desc_changed)
+                self._revision_table.setItem(r, 0, id_item)
+                self._revision_table.setItem(r, 1, rev_no_item)
+                self._revision_table.setItem(r, 2, date_item)
+                self._revision_table.setItem(r, 3, desc_item)
+                
+                # Highlight current
+                if row.get("ID") == self.quote_id:
+                    for c in range(4):
+                        self._revision_table.item(r, c).setBackground(Qt.yellow)
 
             # Fit height to content
             self._revision_table.resizeRowsToContents()
@@ -901,25 +928,17 @@ class QuotationPreviewPage(QWidget):
         self.content_layout.addWidget(group)
         return toggle_btn, container
 
-    def _on_revision_desc_changed(self, item):
-        """Saves an edited revision description inline."""
-        if item.column() != 2:
-            return
-        rev_id = item.data(Qt.UserRole)
-        if rev_id is None:
-            return
-        self._revision_table.blockSignals(True)
-        try:
-            self.service.update_revision_field(rev_id, "QuoteRevisionDescription", item.text())
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to update revision: {e}")
-        finally:
-            self._revision_table.blockSignals(False)
-
     def _add_revision_from_preview(self):
         """Creates a new revision for the current quotation and refreshes the view."""
         try:
-            self.service.create_revision(self.quote_id)
+            new_quote_id = self.service.create_revision(self.quote_id)
+            
+            # Switch context in main window
+            if hasattr(self.main_window, 'populate_revisions'):
+                quote_data = self.service.get_quotation_by_id(self.quote_id)
+                base_quote_id = quote_data.get("BaseQuoteID") if quote_data else self.quote_id
+                self.main_window.populate_revisions(base_quote_id, new_quote_id)
+                
             self.refresh_view()
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))

@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QLabel, QPushButton, QHBoxLayout, QVBoxLayout, 
-    QStackedWidget, QFrame
+    QStackedWidget, QFrame, QComboBox, QMessageBox
 )
 from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtCore import Qt
@@ -76,6 +76,13 @@ class QuotationDetailsWindow(QMainWindow):
         self.items_btn.setToolTip("View all module items for the selected quotation")
         self.items_btn.setEnabled(False)
 
+        # Revision Dropdown
+        self.revision_combo_label = QLabel("Active Revision:")
+        self.revision_combo_label.hide()
+        self.revision_combo = QComboBox()
+        self.revision_combo.hide()
+        self.revision_combo.currentIndexChanged.connect(self._on_revision_selected)
+
         sidebar_layout.addWidget(title)
         sidebar_layout.addWidget(self.quotations_btn)
         sidebar_layout.addWidget(self.preview_btn)
@@ -83,6 +90,9 @@ class QuotationDetailsWindow(QMainWindow):
         sidebar_layout.addWidget(self.panels_btn)
         sidebar_layout.addWidget(self.panel_modules_btn)
         sidebar_layout.addWidget(self.items_btn)
+        sidebar_layout.addSpacing(20)
+        sidebar_layout.addWidget(self.revision_combo_label)
+        sidebar_layout.addWidget(self.revision_combo)
         sidebar_layout.addStretch()
         
         # Close button to return to main ERP
@@ -135,16 +145,89 @@ class QuotationDetailsWindow(QMainWindow):
         self.esc_shortcut.activated.connect(self.close)
 
     def show_quotations(self):
+        self.revision_combo_label.hide()
+        self.revision_combo.hide()
         self.pages.setCurrentIndex(1)
+
+    def populate_revisions(self, base_quote_id, current_quote_id):
+        """Populates the revisions dropdown for the selected quotation family."""
+        self.revision_combo.blockSignals(True)
+        self.revision_combo.clear()
+        
+        revisions = self.quotation_page.service.get_revisions_for_quote(base_quote_id)
+        current_index = 0
+        
+        for i, rev in enumerate(revisions):
+            rev_no = rev.get("RevisionNo", 0)
+            ref_no = rev.get("QuoteRereceNo", f"Rev {rev_no}")
+            display_text = f"Rev {rev_no} - {ref_no}"
+            if rev_no == 0:
+                display_text = f"Original - {ref_no}"
+                
+            self.revision_combo.addItem(display_text, rev["ID"])
+            if rev["ID"] == current_quote_id:
+                current_index = i
+                
+        if self.revision_combo.count() > 0:
+            self.revision_combo.setCurrentIndex(current_index)
+            self.revision_combo_label.show()
+            self.revision_combo.show()
+        else:
+            self.revision_combo_label.hide()
+            self.revision_combo.hide()
+            
+        self.revision_combo.blockSignals(False)
+
+    def _on_revision_selected(self, index):
+        """Triggered when the user selects a different revision from the dropdown."""
+        if index < 0: return
+        new_quote_id = self.revision_combo.itemData(index)
+        combo_text = self.revision_combo.currentText()
+        
+        # Do not force selection in table since old revisions might not be in the max-revision table.
+        # Just fetch the correct project name from the database.
+        quote_data = self.quotation_page.service.get_quotation_by_id(new_quote_id)
+        if quote_data:
+            base_project_name = quote_data.get("QuoteProjectName", "Project")
+        else:
+            base_project_name = "Project"
+            
+        # Let QuotationPage update the row in-place if needed
+        if hasattr(self.quotation_page, 'update_selected_row_with_quote'):
+            self.quotation_page.update_selected_row_with_quote(new_quote_id)
+            
+        display_title = f"{base_project_name} ({combo_text})"
+        
+        # Now reload the currently visible page
+        current_widget = self.pages.currentWidget()
+        if hasattr(current_widget, 'load_quotation'):
+            current_widget.load_quotation(new_quote_id, display_title)
+        elif current_widget == self.module_items_viewer_page:
+            self.module_items_viewer_page.load_viewer(new_quote_id)
+
+    def _get_active_quote_id(self, default_id):
+        if self.revision_combo_label.isVisible() and self.revision_combo.count() > 0:
+            return self.revision_combo.currentData()
+        return default_id
+
+    def _get_display_project_name(self, base_project_name):
+        if self.revision_combo_label.isVisible() and self.revision_combo.count() > 0:
+            combo_text = self.revision_combo.currentText()
+            return f"{base_project_name} ({combo_text})"
+        return base_project_name
 
     def show_panels(self):
         """Switches to the Panel view for the selected quotation."""
         selected = self.quotation_page.table.selectionModel().selectedRows()
         if selected:
             row = selected[0].row()
-            quote_id = int(self.quotation_page.table.item(row, 0).text())
+            table_quote_id = int(self.quotation_page.table.item(row, 0).text())
             project_name = self.quotation_page.table.item(row, 7).text()
-            self.open_panel_view(quote_id, project_name)
+            
+            active_quote_id = self._get_active_quote_id(table_quote_id)
+            display_name = self._get_display_project_name(project_name)
+            
+            self.open_panel_view(active_quote_id, display_name)
         else:
             # If no selection, just show the quotations list
             self.show_quotations()
@@ -159,9 +242,13 @@ class QuotationDetailsWindow(QMainWindow):
         selected = self.quotation_page.table.selectionModel().selectedRows()
         if selected:
             row = selected[0].row()
-            quote_id = int(self.quotation_page.table.item(row, 0).text())
+            table_quote_id = int(self.quotation_page.table.item(row, 0).text())
             project_name = self.quotation_page.table.item(row, 7).text()
-            self.panel_module_page.load_quotation(quote_id, project_name)
+            
+            active_quote_id = self._get_active_quote_id(table_quote_id)
+            display_name = self._get_display_project_name(project_name)
+            
+            self.panel_module_page.load_quotation(active_quote_id, display_name)
             self.pages.setCurrentWidget(self.panel_module_page)
         else:
             # If no quotation is selected, ensure the panel modules page is cleared
@@ -179,9 +266,13 @@ class QuotationDetailsWindow(QMainWindow):
         selected = self.quotation_page.table.selectionModel().selectedRows()
         if selected:
             row = selected[0].row()
-            quote_id = int(self.quotation_page.table.item(row, 0).text())
+            table_quote_id = int(self.quotation_page.table.item(row, 0).text())
             project_name = self.quotation_page.table.item(row, 7).text()
-            self.revision_page.load_quotation(quote_id, project_name)
+            
+            active_quote_id = self._get_active_quote_id(table_quote_id)
+            display_name = self._get_display_project_name(project_name)
+            
+            self.revision_page.load_quotation(active_quote_id, display_name)
             self.pages.setCurrentWidget(self.revision_page)
         else:
             self.show_quotations()
@@ -201,9 +292,13 @@ class QuotationDetailsWindow(QMainWindow):
         selected = self.quotation_page.table.selectionModel().selectedRows()
         if selected:
             row = selected[0].row()
-            quote_id = int(self.quotation_page.table.item(row, 0).text())
+            table_quote_id = int(self.quotation_page.table.item(row, 0).text())
             project_name = self.quotation_page.table.item(row, 7).text()
-            self.preview_page.load_quotation(quote_id, project_name)
+            
+            active_quote_id = self._get_active_quote_id(table_quote_id)
+            display_name = self._get_display_project_name(project_name)
+            
+            self.preview_page.load_quotation(active_quote_id, display_name)
             self.pages.setCurrentWidget(self.preview_page)
         else:
             QMessageBox.warning(self, "Selection Required", "Please select a quotation to preview.")

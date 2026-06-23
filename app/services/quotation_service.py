@@ -9,7 +9,7 @@ class QuotationService:
         pass
 
     def get_all_quotations(self):
-        """Fetches quotations with joined customer and contact names."""
+        """Fetches the latest quotation for each family with joined customer and contact names."""
         query = text("""
                 SELECT 
                     q."ID",
@@ -18,10 +18,16 @@ class QuotationService:
                     q."DateOfRequest", q."Date_Quote", q."QuoteRereceNo",
                     q."QuoteSubject", q."QuoteProjectName",
                     cc."CustomerContactName",
-                    q."PreparedBy", q."QuoteStatus"
+                    q."PreparedBy", q."QuoteStatus",
+                    q."BaseQuoteID", q."RevisionNo"
                 FROM public."tbl_QuoteMain" q
                 LEFT JOIN public."tblCustomers" c ON q."CustomerId" = c."ID"
                 LEFT JOIN public."tblCustomerContacts" cc ON q."CustomerContactID" = cc."ID"
+                WHERE q."RevisionNo" = (
+                    SELECT COALESCE(MAX("RevisionNo"), 0)
+                    FROM public."tbl_QuoteMain" q2 
+                    WHERE COALESCE(q2."BaseQuoteID", q2."ID") = COALESCE(q."BaseQuoteID", q."ID")
+                )
                 ORDER BY q."ID" DESC
         """)
         with get_session() as session:
@@ -178,16 +184,20 @@ class QuotationService:
                 query = text("""
                         INSERT INTO public."tbl_QuoteMain" (
                             "CustomerId", "DateOfRequest", "Date_Quote", "QuoteRereceNo", 
-                            "QuoteSubject", "QuoteProjectName", "PreparedBy", "QuoteStatus"
-                        ) VALUES (:customer_id, :req_date, :quote_date, :ref_no, :subject, :project, :prepared_by, :status)
+                            "QuoteSubject", "QuoteProjectName", "PreparedBy", "QuoteStatus", "RevisionNo"
+                        ) VALUES (:customer_id, :req_date, :quote_date, :ref_no, :subject, :project, :prepared_by, :status, 0)
+                        RETURNING "ID"
                 """)
                 params = {
                     "customer_id": kwargs.get('customer_id'), "req_date": kwargs.get('req_date'), "quote_date": kwargs.get('quote_date'),
                     "ref_no": kwargs.get('ref_no'), "subject": kwargs.get('subject'), "project": kwargs.get('project'),
                     "prepared_by": kwargs.get('prepared_by'), "status": kwargs.get('status')
                 }
-                session.execute(query, params)
+                new_id_res = session.execute(query, params)
+                new_id = new_id_res.fetchone()[0]
+                session.execute(text('UPDATE public."tbl_QuoteMain" SET "BaseQuoteID" = :id WHERE "ID" = :id'), {"id": new_id})
                 session.commit()
+                return new_id
             except Exception:
                 session.rollback()
                 raise
@@ -276,7 +286,8 @@ class QuotationService:
                 SELECT 
                     q."ID", q."CustomerId", c."CustomerName", q."DateOfRequest", q."Date_Quote", 
                     q."QuoteRereceNo", q."QuoteSubject", q."QuoteProjectName",
-                    cc."CustomerContactName", q."PreparedBy", q."QuoteStatus"
+                    cc."CustomerContactName", q."PreparedBy", q."QuoteStatus",
+                    q."BaseQuoteID", q."RevisionNo"
                 FROM public."tbl_QuoteMain" q
                 LEFT JOIN public."tblCustomers" c ON q."CustomerId" = c."ID"
                 LEFT JOIN public."tblCustomerContacts" cc ON q."CustomerContactID" = cc."ID"
@@ -648,7 +659,7 @@ class QuotationService:
                     "BottomTopQty", "BottomSteelSize", "TypeOfSeating", "Canopy", "CableEntry",
                     "Mounting", "DoubleDoor", "DrawoutFixed", "IndoorOutdoor", "PanelFace", "ProtectionClass",
                     "SeatStand", "StandMetalSize"
-                ) VALUES (:panel_id, 0, 'CRCA 1.2 mm', 0, 'CRCA 1.2 mm', 0, 'CRCA 1.2 mm', 'ISMC', 'No', 'Top',
+                ) VALUES (:panel_id, 2, 'CRCA 2 mm', 2, 'CRCA 2 mm', 2, 'CRCA 2 mm', 'ISMC', 'No', 'Top',
                           'free stand', 'No', 'No', 'Indoor', 'single', 'IP 44', 'No', '0')
         """)
         with get_session() as session:
@@ -861,27 +872,74 @@ class QuotationService:
                 session.rollback()
                 raise
 
-    def get_revisions_list(self, quote_id):
-        """Fetches all revisions for a quotation."""
-        query = text('SELECT * FROM public."tbl_QuoteRev" WHERE "QuoteID" = :quote_id ORDER BY "RevisionNo" DESC')
+    def get_revisions_for_quote(self, base_quote_id):
+        """Fetches all revisions for a given quotation family (BaseQuoteID)."""
+        query = text('SELECT "ID", "RevisionNo", "Date_Quote", "QuoteRereceNo", "QuoteProjectName" FROM public."tbl_QuoteMain" WHERE "BaseQuoteID" = :base_quote_id ORDER BY "RevisionNo" DESC')
         with get_session() as session:
             try:
-                result = session.execute(query, {"quote_id": quote_id})
-                return [tuple(row) for row in result.fetchall()]
+                result = session.execute(query, {"base_quote_id": base_quote_id})
+                return [dict(row._mapping) for row in result.fetchall()]
             except Exception as e:
                 print(f"Error fetching revisions: {e}")
                 return []
 
-    def create_revision(self, quote_id):
-        """Creates a new revision entry."""
+    def get_all_revisions_grouped(self):
+        """Returns a dict mapping BaseQuoteID to a list of its revisions."""
+        query = text('SELECT "ID", "RevisionNo", "BaseQuoteID", "QuoteRereceNo" FROM public."tbl_QuoteMain" ORDER BY "RevisionNo" DESC')
+        grouped = {}
         with get_session() as session:
             try:
-                query = text("""
-                    INSERT INTO public."tbl_QuoteRev" ("QuoteID", "RevisionNo", "QuoteRevisionDate")
-                    VALUES (:id, (SELECT COALESCE(MAX("RevisionNo"), 0) + 1 FROM public."tbl_QuoteRev" WHERE "QuoteID" = :id), CURRENT_TIMESTAMP)
-                """)
-                session.execute(query, {"id": quote_id})
+                result = session.execute(query)
+                for row in result.fetchall():
+                    r_dict = dict(row._mapping)
+                    base_id = r_dict.get("BaseQuoteID") or r_dict.get("ID")
+                    if base_id not in grouped:
+                        grouped[base_id] = []
+                    grouped[base_id].append(r_dict)
+            except Exception as e:
+                print(f"Error fetching grouped revisions: {e}")
+        return grouped
+
+    def create_revision(self, quote_id):
+        """Creates a new revision entry by deep copying the quotation."""
+        with get_session() as session:
+            try:
+                # 1. Get original quote details
+                old_quote = session.execute(text('SELECT "BaseQuoteID", "QuoteRereceNo", "QuoteProjectName" FROM public."tbl_QuoteMain" WHERE "ID" = :id'), {"id": quote_id}).fetchone()
+                if not old_quote:
+                    raise Exception("Quotation not found")
+                
+                base_quote_id = old_quote[0] if old_quote[0] is not None else quote_id
+                
+                # 2. Determine new revision number
+                max_rev_res = session.execute(text('SELECT MAX("RevisionNo") FROM public."tbl_QuoteMain" WHERE "BaseQuoteID" = :bid'), {"bid": base_quote_id}).fetchone()
+                next_rev_no = (max_rev_res[0] or 0) + 1
+                
+                # 3. Create deep copy
+                new_quote_id = self.copy_quotation(quote_id, session=session, is_revision=True)
+                
+                # Fetch original base quote details to guarantee we use the VERY FIRST name
+                base_quote_details = session.execute(text('SELECT "QuoteRereceNo", "QuoteProjectName" FROM public."tbl_QuoteMain" WHERE "ID" = :bid'), {"bid": base_quote_id}).fetchone()
+                
+                # 4. Update the new quote with base_quote_id and revision details
+                import re
+                base_ref_no = base_quote_details[0] if base_quote_details else ""
+                # Strip existing -R suffix if any
+                base_ref_no = re.sub(r'-[rR]\d+$', '', base_ref_no).strip()
+                new_ref_no = f"{base_ref_no}-r{next_rev_no}"
+
+                base_proj_name = base_quote_details[1] if base_quote_details else "Project"
+                base_proj_name = re.sub(r'-[rR]\d+$', '', base_proj_name).strip()
+                new_proj_name = f"{base_proj_name}-r{next_rev_no}"
+                
+                session.execute(text('''
+                    UPDATE public."tbl_QuoteMain" 
+                    SET "BaseQuoteID" = :bid, "RevisionNo" = :rev_no, "QuoteRereceNo" = :ref_no, "QuoteProjectName" = :proj_name
+                    WHERE "ID" = :new_id
+                '''), {"bid": base_quote_id, "rev_no": next_rev_no, "ref_no": new_ref_no, "proj_name": new_proj_name, "new_id": new_quote_id})
+                
                 session.commit()
+                return new_quote_id
             except Exception:
                 session.rollback()
                 raise
@@ -1215,13 +1273,16 @@ class QuotationService:
                     new_session.rollback()
                     raise e
 
-    def copy_quotation(self, quote_id, session=None):
+    def copy_quotation(self, quote_id, session=None, is_revision=False):
         def _execute(sess):
             old_quote = sess.execute(text('SELECT * FROM public."tbl_QuoteMain" WHERE "ID" = :id'), {"id": quote_id}).fetchone()
             if not old_quote: return
             old_q = dict(old_quote._mapping)
             
-            new_project_name = f"{old_q.get('QuoteProjectName', 'Project')}_copy"
+            if is_revision:
+                new_project_name = old_q.get('QuoteProjectName', 'Project')
+            else:
+                new_project_name = f"{old_q.get('QuoteProjectName', 'Project')}_copy"
             
             res = sess.execute(text("""
                 INSERT INTO public."tbl_QuoteMain" (
@@ -1234,6 +1295,10 @@ class QuotationService:
                 "ccid": old_q.get("CustomerContactID"), "pb": old_q.get("PreparedBy"), "stat": old_q.get("QuoteStatus")
             })
             new_quote_id = res.fetchone()[0]
+            
+            # Since this is a regular copy, we also set BaseQuoteID to itself so it is its own family.
+            # If it's a revision, create_revision will update it later.
+            sess.execute(text('UPDATE public."tbl_QuoteMain" SET "BaseQuoteID" = :id WHERE "ID" = :id'), {"id": new_quote_id})
             
             old_ctc = sess.execute(text('SELECT * FROM public."tbl_QuoteCTC" WHERE "QuoteID" = :id'), {"id": quote_id}).fetchone()
             if old_ctc:
@@ -1280,14 +1345,16 @@ class QuotationService:
             
             for p in panels:
                 self.copy_panel(p[0], new_quote_id, sess)
+            return new_quote_id
 
         if session:
-            _execute(session)
+            return _execute(session)
         else:
             with get_session() as new_session:
                 try:
-                    _execute(new_session)
+                    new_id = _execute(new_session)
                     new_session.commit()
+                    return new_id
                 except Exception as e:
                     new_session.rollback()
                     raise e

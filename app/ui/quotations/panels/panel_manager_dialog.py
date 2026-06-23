@@ -8,7 +8,7 @@ from PySide6.QtGui import QShortcut, QKeySequence
 from app.services.quotation_service import QuotationService
 from app.ui.searchable_table import SearchableTable, NumericTableWidgetItem
 from app.utils.worker_thread import Worker
-from app.ui.quotations.panel_form import PanelForm
+from app.ui.quotations.panels.panel_form import PanelForm
 
 class PanelManagerDialog(QDialog):
     """Dialog to manage panels for a specific quotation."""

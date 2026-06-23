@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt, QTimer
 from app.services.quotation_service import QuotationService
 from app.ui.searchable_table import SearchableTable, NumericTableWidgetItem
 from app.utils.worker_thread import Worker
-from app.ui.quotations.panel_delegates import ComboBoxDelegate
+from app.ui.quotations.panels.panel_delegates import ComboBoxDelegate
 from app.ui.quotations.ctc_constants import (
     GST_OPTIONS, FREIGHT_OPTIONS, PAYMENT_OPTIONS, WARRANTY_OPTIONS,
     VALIDITY_OPTIONS, PACKING_OPTIONS, INSPECTION_OPTIONS, DELIVERY_OPTIONS

@@ -10,7 +10,7 @@ from app.utils.worker_thread import Worker
 from app.ui.quotations.modules.panel_module_form import PanelModuleForm
 from app.ui.quotations.modules.panel_module_preview_dialog import PanelModulePreviewDialog
 from app.ui.quotations.module_items.module_items_viewer_dialog import ModuleItemsViewerDialog
-from app.ui.quotations.panel_delegates import ComboBoxDelegate, DoubleSpinBoxDelegate
+from app.ui.quotations.panels.panel_delegates import ComboBoxDelegate, DoubleSpinBoxDelegate
 from app.ui.quotations.module_items.module_item_form import ModuleItemForm
 from app.ui.quotations.module_items.select_module_items_dialog import SelectModuleItemsDialog
 

@@ -12,8 +12,8 @@ import operator # For evaluating expressions
 from app.services.quotation_service import QuotationService
 from app.ui.searchable_table import SearchableTable, NumericTableWidgetItem
 from app.utils.worker_thread import Worker
-from app.ui.quotations.panel_form import PanelForm
-from app.ui.quotations.panel_delegates import ComboBoxDelegate
+from app.ui.quotations.panels.panel_form import PanelForm
+from app.ui.quotations.panels.panel_delegates import ComboBoxDelegate
 
 class SumCalculatorDialog(QDialog):
     """Dialog to sum multiple values and return the total for dimension columns."""
@@ -365,7 +365,7 @@ class SteelSelectorWidget(QWidget):
             QMessageBox.critical(self, "Calculation Error", f"Failed to calculate cost: {e}")
 
     def _setup_delegates(self):
-        from app.ui.quotations.panel_delegates import ComboBoxDelegate
+        from app.ui.quotations.panels.panel_delegates import ComboBoxDelegate
         sizes = ["CRCA 1.2 mm", "CRCA 1.6 mm", "CRCA 2 mm", "CRCA 3 mm"]
         yn = ["No", "Yes"]
         seating = ["ISMC", "3 mm sheet", "Single value"]

@@ -1,5 +1,0 @@
-have input columns for per unit cost for values like 
-
--unit paint cost per sq feet
--unit gascut cost
--unit electrical cost

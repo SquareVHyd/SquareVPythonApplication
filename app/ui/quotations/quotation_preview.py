@@ -9,7 +9,7 @@ from datetime import datetime
 from app.ui.searchable_table import SearchableTable, NumericTableWidgetItem
 from app.services.quotation_service import QuotationService
 from app.ui.quotations.quotation_form import QuotationForm
-from app.ui.quotations.panel_form import PanelForm
+from app.ui.quotations.panels.panel_form import PanelForm
 from app.ui.quotations.modules.panel_module_form import PanelModuleForm
 from app.ui.quotations.module_items.module_item_form import ModuleItemForm
 from app.ui.quotations.module_items.select_module_items_dialog import SelectModuleItemsDialog

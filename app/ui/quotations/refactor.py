@@ -112,7 +112,7 @@ new_widgets = """class SteelSelectorWidget(QWidget):
             QMessageBox.critical(self, "Save Error", f"Failed to save record: {e}")
 
     def _setup_delegates(self):
-        from app.ui.quotations.panel_delegates import ComboBoxDelegate
+        from app.ui.quotations.panels.panel_delegates import ComboBoxDelegate
         sizes = ["CRCA 1.2 mm", "CRCA 1.6 mm", "CRCA 2 mm", "CRCA 3 mm"]
         yn = ["No", "Yes"]
         seating = ["ISMC", "3 mm sheet", "Single value"]

@@ -8,7 +8,7 @@ from sqlalchemy import text
 from app.config.database import get_session
 from app.services.quotation_service import QuotationService
 from app.ui.searchable_table import SearchableTable, NumericTableWidgetItem
-from app.ui.quotations.panel_delegates import ComboBoxDelegate, SpinBoxDelegate, DoubleSpinBoxDelegate
+from app.ui.quotations.panels.panel_delegates import ComboBoxDelegate, SpinBoxDelegate, DoubleSpinBoxDelegate
 from app.ui.quotations.module_items.module_item_form import ModuleItemForm
 from app.ui.quotations.module_items.select_module_items_dialog import SelectModuleItemsDialog
 from app.utils.worker_thread import Worker

@@ -2,13 +2,14 @@ import os
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, 
     QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit, QTextEdit, QFileDialog, QMessageBox, QSplitter, QDialog, QTextBrowser,
-    QListWidget, QListWidgetItem
+    QListWidget, QListWidgetItem, QFormLayout, QFrame, QGridLayout, QAbstractItemView, QSizePolicy
 )
 from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QTextDocument, QPageSize
 from PySide6.QtPrintSupport import QPrinter
 from sqlalchemy import text
 from app.config.database import get_session
+from app.ui.searchable_table import SearchableTable
 
 class MakeSelectionDialog(QDialog):
     def __init__(self, makes, selected_makes, parent=None):
@@ -18,47 +19,100 @@ class MakeSelectionDialog(QDialog):
         self.setMinimumHeight(400)
         layout = QVBoxLayout(self)
         
-        self.list_widget = QListWidget()
+        from PySide6.QtWidgets import QScrollArea, QCheckBox, QWidget, QLabel
+        from PySide6.QtCore import Qt
+        
+        class CheckBoxRow(QWidget):
+            def __init__(self, text, is_checked):
+                super().__init__()
+                self.text_val = text
+                layout = QHBoxLayout(self)
+                layout.setContentsMargins(10, 12, 10, 12)
+                
+                self.checkbox = QCheckBox(text)
+                self.checkbox.setChecked(is_checked)
+                self.checkbox.setStyleSheet("font-size: 14px; color: #1e293b;")
+                # Make checkbox ignore clicks so the row handles it entirely
+                self.checkbox.setAttribute(Qt.WA_TransparentForMouseEvents)
+                
+                layout.addWidget(self.checkbox)
+                layout.addStretch()
+                
+                self.setCursor(Qt.PointingHandCursor)
+                self.setStyleSheet("""
+                    CheckBoxRow {
+                        border-bottom: 1px solid #cbd5e1;
+                        background-color: white;
+                    }
+                    CheckBoxRow:hover {
+                        background-color: #f8fafc;
+                    }
+                """)
+                
+            def mouseReleaseEvent(self, event):
+                if event.button() == Qt.LeftButton:
+                    self.checkbox.setChecked(not self.checkbox.isChecked())
+                    
+            def is_checked(self):
+                return self.checkbox.isChecked()
+                
+            def set_checked(self, state):
+                self.checkbox.setChecked(state)
+
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setStyleSheet("QScrollArea { border: 1px solid #cbd5e1; border-radius: 4px; }")
+        
+        self.scroll_widget = QWidget()
+        self.scroll_widget.setStyleSheet("background-color: white;")
+        self.scroll_layout = QVBoxLayout(self.scroll_widget)
+        self.scroll_layout.setSpacing(0)
+        self.scroll_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.rows = []
         for make in makes:
-            item = QListWidgetItem(make)
-            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-            item.setCheckState(Qt.Checked if make in selected_makes else Qt.Unchecked)
-            self.list_widget.addItem(item)
+            row = CheckBoxRow(make, make in selected_makes)
+            self.scroll_layout.addWidget(row)
+            self.rows.append(row)
             
-        layout.addWidget(self.list_widget)
+        self.scroll_layout.addStretch()
+        self.scroll_area.setWidget(self.scroll_widget)
+        layout.addWidget(self.scroll_area)
         
         btn_layout = QHBoxLayout()
         
         select_all_btn = QPushButton("Select All")
+        select_all_btn.setAutoDefault(False)
         select_all_btn.clicked.connect(self.select_all)
         btn_layout.addWidget(select_all_btn)
         
         clear_all_btn = QPushButton("Clear All")
+        clear_all_btn.setAutoDefault(False)
         clear_all_btn.clicked.connect(self.clear_all)
         btn_layout.addWidget(clear_all_btn)
         
         btn_layout.addStretch()
         
         ok_btn = QPushButton("OK")
+        ok_btn.setDefault(True)
         ok_btn.clicked.connect(self.accept)
         btn_layout.addWidget(ok_btn)
         
         layout.addLayout(btn_layout)
         
     def select_all(self):
-        for i in range(self.list_widget.count()):
-            self.list_widget.item(i).setCheckState(Qt.Checked)
+        for row in self.rows:
+            row.set_checked(True)
             
     def clear_all(self):
-        for i in range(self.list_widget.count()):
-            self.list_widget.item(i).setCheckState(Qt.Unchecked)
+        for row in self.rows:
+            row.set_checked(False)
         
     def get_selected_makes(self):
         selected = []
-        for i in range(self.list_widget.count()):
-            item = self.list_widget.item(i)
-            if item.checkState() == Qt.Checked:
-                selected.append(item.text())
+        for row in self.rows:
+            if row.is_checked():
+                selected.append(row.text_val)
         return selected
 
 class POPreviewDialog(QDialog):
@@ -139,178 +193,127 @@ class PoGeneratorPage(QWidget):
         
         layout.addLayout(header)
         
-        # --- Splitter for PO Header Info and Table ---
-        splitter = QSplitter(Qt.Vertical)
-        
-        # Header Info Editor
-        header_widget = QWidget()
-        header_widget.setStyleSheet("""
-            QWidget { background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 11px; }
-            QLabel { border: none; font-weight: bold; color: #334155; }
-            QTextEdit, QLineEdit { background-color: white; border: 1px solid #94a3b8; border-radius: 3px; padding: 4px; font-weight: normal; color: #0f172a; }
-        """)
-        header_layout = QVBoxLayout(header_widget)
-        header_layout.setContentsMargins(15, 15, 15, 15)
-        header_layout.setSpacing(10)
-        
         header_title = QLabel("PO Header Details (Editable):")
-        header_title.setStyleSheet("font-size: 13px; color: #0f172a;")
-        header_layout.addWidget(header_title)
+        header_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #0f172a;")
+        header_title.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        layout.addWidget(header_title)
         
-        h_info_layout = QHBoxLayout()
-        h_info_layout.setSpacing(20)
+        self.header_table = QTableWidget()
+        self.header_table.setColumnCount(3)
+        self.header_table.setRowCount(1)
+        self.header_table.setHorizontalHeaderLabels(["Sender Details", "Recipient Details", "Introductory Text"])
+        self.header_table.verticalHeader().setVisible(False)
+        self.header_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.header_table.setFocusPolicy(Qt.NoFocus)
+        self.header_table.setStyleSheet(
+            "QTableWidget { gridline-color: #cbd5e1; border: 1px solid #94a3b8; background-color: white; }"
+            "QHeaderView::section { background-color: #f1f5f9; padding: 6px; border: 1px solid #cbd5e1; font-weight: bold; color: #334155; text-align: center; }"
+            "QTextEdit, QLineEdit { border: none; background-color: transparent; padding: 4px; }"
+            "QTextEdit:focus, QLineEdit:focus { background-color: #f8fafc; }"
+        )
+        self.header_table.setRowHeight(0, 100)
+        self.header_table.setMaximumHeight(140)
         
-        # Sender
-        sender_layout = QVBoxLayout()
-        sender_layout.setSpacing(4)
-        sender_layout.addWidget(QLabel("Sender Details (Top Left):"))
+        # Configure column widths (evenly stretched)
+        header_view = self.header_table.horizontalHeader()
+        header_view.setSectionResizeMode(0, QHeaderView.Stretch)
+        header_view.setSectionResizeMode(1, QHeaderView.Stretch)
+        header_view.setSectionResizeMode(2, QHeaderView.Stretch)
+        
+        # Sender Details
         self.sender_edit = QTextEdit()
         self.sender_edit.setPlainText("National Engineering Enterprises\n#303,3rd floor, Adinath Sqare,\n5-3-404 TO 411,Hyderbasthi,\nnear Gujarati High School Lane,\nR.P Road,Secunderabad -500 003")
-        self.sender_edit.setMaximumHeight(100)
-        sender_layout.addWidget(self.sender_edit)
-        h_info_layout.addLayout(sender_layout)
+        self.header_table.setCellWidget(0, 0, self.sender_edit)
         
-        # Middle (Date/Ref)
-        mid_layout = QVBoxLayout()
-        mid_layout.setSpacing(4)
-        
-        mid_layout.addWidget(QLabel("Issue Date:"))
-        self.date_edit = QLineEdit()
-        self.date_edit.setText(QDate.currentDate().toString("dd/MM/yyyy"))
-        mid_layout.addWidget(self.date_edit)
-        
-        mid_layout.addSpacing(10)
-        mid_layout.addWidget(QLabel("Reference:"))
-        self.ref_edit = QLineEdit()
-        self.ref_edit.setText("SVEE05 -2026-27")
-        mid_layout.addWidget(self.ref_edit)
-        mid_layout.addStretch()
-        h_info_layout.addLayout(mid_layout)
-        
-        # Recipient
-        rec_layout = QVBoxLayout()
-        rec_layout.setSpacing(4)
-        rec_layout.addWidget(QLabel("Recipient Details (Top Right):"))
+        # Recipient Details
         self.rec_edit = QTextEdit()
         self.rec_edit.setPlainText("Square V Engineering Enterprises\nGROUND FLOOR, Road No .14\nSurvey No:298(P), Pipe Line Road,\nPhase-I, IDA, Jeedimetla,\nHyderabad - 500055, Telangana, India\nEmail: info.squarev@gmail.com\nExport: IEC:AFKFS1080B ,State Code: 36\nGSTIN : 36AFKFS1080B1Z7")
-        self.rec_edit.setMaximumHeight(100)
-        rec_layout.addWidget(self.rec_edit)
-        h_info_layout.addLayout(rec_layout)
+        self.header_table.setCellWidget(0, 1, self.rec_edit)
         
-        header_layout.addLayout(h_info_layout)
-        
-        # Intro Text
-        intro_layout = QHBoxLayout()
-        intro_layout.setSpacing(10)
-        intro_layout.addWidget(QLabel("Introductory Text:"))
+        def wrap_top(widget):
+            w = QWidget()
+            l = QVBoxLayout(w)
+            l.setContentsMargins(0, 0, 0, 0)
+            l.addWidget(widget, 0, Qt.AlignTop)
+            return w
+            
+        # Introductory Text
         self.intro_edit = QLineEdit()
         self.intro_edit.setText("We are please to award purchase order for supply of Terminals as per mentioned below")
-        intro_layout.addWidget(self.intro_edit)
-        header_layout.addLayout(intro_layout)
+        self.header_table.setCellWidget(0, 2, wrap_top(self.intro_edit))
         
-        splitter.addWidget(header_widget)
+        layout.addWidget(self.header_table)
         
-        self.table = QTableWidget()
+        # Bottom Details (Date and Ref)
+        bottom_details_layout = QHBoxLayout()
+        bottom_details_layout.setSpacing(20)
+        
+        date_layout = QHBoxLayout()
+        lbl_date = QLabel("Date:")
+        lbl_date.setStyleSheet("border: none; font-weight: bold; color: #334155;")
+        self.date_edit = QLineEdit()
+        self.date_edit.setText(QDate.currentDate().toString("dd/MM/yyyy"))
+        self.date_edit.setMaximumWidth(150)
+        date_layout.addWidget(lbl_date)
+        date_layout.addWidget(self.date_edit)
+        
+        ref_layout = QHBoxLayout()
+        lbl_ref = QLabel("Ref No:")
+        lbl_ref.setStyleSheet("border: none; font-weight: bold; color: #334155;")
+        self.ref_edit = QLineEdit()
+        self.ref_edit.setText("SVEE05 -2026-27")
+        self.ref_edit.setMaximumWidth(200)
+        ref_layout.addWidget(lbl_ref)
+        ref_layout.addWidget(self.ref_edit)
+        
+        bottom_details_layout.addLayout(date_layout)
+        bottom_details_layout.addLayout(ref_layout)
+        bottom_details_layout.addStretch()
+        
+        layout.addLayout(bottom_details_layout)
+        
+        self.table = SearchableTable()
         self.table.setColumnCount(7)
         self.table.setHorizontalHeaderLabels(["#", "Description", "Qty", "Unit price", "Price", "Discount %", "Total"])
-        
-        # Enforce exact measures matching the 850px PDF template
-        self.table.setFixedWidth(850)
-        self.table.setColumnWidth(0, int(850 * 0.05)) # 5%
-        self.table.setColumnWidth(1, int(850 * 0.43)) # 43%
-        self.table.setColumnWidth(2, int(850 * 0.08)) # 8%
-        self.table.setColumnWidth(3, int(850 * 0.10)) # 10%
-        self.table.setColumnWidth(4, int(850 * 0.12)) # 12%
-        self.table.setColumnWidth(5, int(850 * 0.10)) # 10%
-        self.table.setColumnWidth(6, int(850 * 0.12)) # 12%
-        
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Fixed)
-        self.table.setShowGrid(True)
-        self.table.setStyleSheet("""
-            QTableWidget {
-                background-color: white;
-                gridline-color: black;
-                border: 1px solid black;
-                font-family: Arial, sans-serif;
-                font-size: 14px;
-                color: black;
-            }
-            QHeaderView::section {
-                background-color: white;
-                color: black;
-                border: 1px solid black;
-                font-family: Arial, sans-serif;
-                font-size: 14px;
-                font-weight: bold;
-                padding: 8px;
-            }
-            QTableWidget::item {
-                padding: 6px;
-            }
-        """)
         self.table.itemChanged.connect(self.calculate_row_totals)
         
-        # Center the table in its splitter
-        table_container = QWidget()
-        table_layout = QHBoxLayout(table_container)
-        table_layout.addWidget(self.table)
-        table_layout.setAlignment(Qt.AlignCenter)
-        splitter.addWidget(table_container)
+        # Make the table resize nicely like the steel specification table
+        self.table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self.table)
         
-        layout.addWidget(splitter)
+        # --- Calculation Block (Totals at bottom) ---
+        calc_frame = QFrame()
+        calc_frame.setStyleSheet("QFrame { background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; }")
+        calc_layout = QHBoxLayout(calc_frame)
+        calc_layout.setContentsMargins(15, 10, 15, 10)
         
-        # Footer matching PDF .total-section
-        footer_layout = QHBoxLayout()
-        footer_layout.addStretch()
+        self.lbl_subtotal = QLabel("Sub-total: ₹0.00")
+        self.lbl_subtotal.setStyleSheet("border: none; background: transparent; font-weight: bold; color: #334155; font-size: 13px;")
         
-        self.footer_table = QTableWidget(3, 2)
-        self.footer_table.setFixedWidth(265)
-        self.footer_table.setFixedHeight(130)
-        self.footer_table.horizontalHeader().setVisible(False)
-        self.footer_table.verticalHeader().setVisible(False)
-        self.footer_table.setShowGrid(True)
-        self.footer_table.setFocusPolicy(Qt.NoFocus)
-        self.footer_table.setStyleSheet("""
-            QTableWidget {
-                background-color: white; gridline-color: black; border: 1px solid black; font-family: Arial, sans-serif; font-size: 14px; color: black;
-            }
-            QTableWidget::item { padding: 8px; }
-        """)
-        self.footer_table.setColumnWidth(0, 100)
-        self.footer_table.setColumnWidth(1, 160)
+        self.lbl_gst = QLabel("GST 18%: ₹0.00")
+        self.lbl_gst.setStyleSheet("border: none; background: transparent; font-weight: bold; color: #334155; font-size: 13px;")
         
-        for r in range(3):
-            for c in range(2):
-                item = QTableWidgetItem()
-                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-                self.footer_table.setItem(r, c, item)
+        self.lbl_grand_total = QLabel("Grand Total: ₹0.00")
+        self.lbl_grand_total.setStyleSheet("border: none; background: transparent; font-weight: bold; color: #dc2626; font-size: 13px;")
         
-        self.footer_table.item(0, 0).setText("Sub-total")
-        self.footer_table.item(1, 0).setText("GST 18%")
-        self.footer_table.item(2, 0).setText("Grand Total")
+        lbl_summary = QLabel("PO Total Summary:")
+        lbl_summary.setStyleSheet("border: none; background: transparent; font-weight: bold; color: #0f172a; font-size: 13px;")
+        calc_layout.addWidget(lbl_summary)
+        calc_layout.addStretch()
         
-        # Make the left column bold
-        font = self.footer_table.item(0, 0).font()
-        font.setBold(True)
-        self.footer_table.item(0, 0).setFont(font)
-        self.footer_table.item(1, 0).setFont(font)
-        self.footer_table.item(2, 0).setFont(font)
+        def sep():
+            lbl = QLabel(" | ")
+            lbl.setStyleSheet("border: none; background: transparent; color: #94a3b8;")
+            return lbl
         
-        # Grand total styling
-        font_grand = self.footer_table.item(2, 0).font()
-        font_grand.setBold(True)
-        font_grand.setPointSize(12) # ~18px
-        self.footer_table.item(2, 0).setFont(font_grand)
-        self.footer_table.item(2, 1).setFont(font_grand)
+        calc_layout.addWidget(self.lbl_subtotal)
+        calc_layout.addWidget(sep())
+        calc_layout.addWidget(self.lbl_gst)
+        calc_layout.addWidget(sep())
+        calc_layout.addWidget(self.lbl_grand_total)
         
-        footer_layout.addWidget(self.footer_table)
-        
-        # Ensure footer lines up with the right edge of the table roughly by giving space on the right if needed
-        # We'll just let it align right due to addStretch()
-        
-        # Add footer layout to the main layout
-        layout.addLayout(footer_layout)
+        # Add calc frame to the layout
+        layout.addWidget(calc_frame)
 
     def load_quotation(self, quote_id):
         self.quote_id = quote_id
@@ -387,9 +390,9 @@ class PoGeneratorPage(QWidget):
         
         if not self.selected_makes:
             self.table.blockSignals(False)
-            self.footer_table.item(0, 1).setText("₹0.00")
-            self.footer_table.item(1, 1).setText("₹0.00")
-            self.footer_table.item(2, 1).setText("₹0.00")
+            self.lbl_subtotal.setText("Sub-total: ₹0.00")
+            self.lbl_gst.setText("GST 18%: ₹0.00")
+            self.lbl_grand_total.setText("Grand Total: ₹0.00")
             return
             
         filtered_items = [r for r in self.items_data if str(r[5] or "").strip() in self.selected_makes]
@@ -476,10 +479,10 @@ class PoGeneratorPage(QWidget):
         self.subtotal_val = subtotal
         self.gst_val = subtotal * 0.18
         self.grand_total_val = subtotal + self.gst_val
-            
-        self.footer_table.item(0, 1).setText(f"₹ {subtotal:,.2f}")
-        self.footer_table.item(1, 1).setText(f"₹ {self.gst_val:,.2f}")
-        self.footer_table.item(2, 1).setText(f"₹ {self.grand_total_val:,.2f}")
+        
+        self.lbl_subtotal.setText(f"Sub-total: ₹{self.subtotal_val:,.2f}")
+        self.lbl_gst.setText(f"GST 18%: ₹{self.gst_val:,.2f}")
+        self.lbl_grand_total.setText(f"Grand Total: ₹{self.grand_total_val:,.2f}")
         
         self.table.blockSignals(False)
 
@@ -565,16 +568,17 @@ class PoGeneratorPage(QWidget):
         }}
         table.items{{
             width:100%;
-            border-collapse:collapse;
+            background-color: black;
             font-size:6pt;
         }}
+        .items th, .items td {{
+            background-color: white;
+        }}
         .items th{{
-            border:1px solid black;
             padding:8px;
             text-align:center;
         }}
         .items td{{
-            border:1px solid black;
             padding:6px;
             vertical-align:top;
         }}
@@ -597,12 +601,12 @@ class PoGeneratorPage(QWidget):
         <body>
         <div class="page">
         
-        <table style="margin-bottom: 20px; border: none;" cellspacing="0" cellpadding="0">
+        <table style="margin-bottom: 20px; border: none; width: 100%;" cellspacing="0" cellpadding="0">
             <tr>
-                <td style="border: none; padding-right: 15px; vertical-align: middle;">
+                <td style="border: none; padding-right: 15px; vertical-align: top; width: 50px;">
                     <img src="{logo_url}" height="35">
                 </td>
-                <td style="border: none; vertical-align: middle;">
+                <td style="border: none; vertical-align: top;">
                     <h1 style="margin: 0; padding: 0;">Purchase Order</h1>
                 </td>
             </tr>
@@ -611,19 +615,13 @@ class PoGeneratorPage(QWidget):
         <div class="header" style="width: 100%; margin-bottom: 30px;">
             <table style="width: 100%; border: none;" cellspacing="0" cellpadding="0">
                 <tr>
-                    <td style="width: 40%; vertical-align: top; border: none; font-size: 6pt; line-height: 1.5;" class="block">
+                    <td style="width: 50%; vertical-align: top; border: none; font-size: 6pt; line-height: 1.5; padding-right: 20px;" class="block">
+                        <div style="font-weight: bold; margin-bottom: 2px;">Date Issued: {self.date_edit.text()}</div>
+                        <div style="font-weight: bold; margin-bottom: 10px;">Reference: {self.ref_edit.text()}</div>
                         <div class="bold" style="font-weight: bold;">{sender_bold}</div>
                         {sender_rest}
                     </td>
-                    <td style="width: 20%; vertical-align: top; text-align: center; border: none; font-size: 6pt;" class="middle">
-                        <table style="width: 100%; border: none;" cellspacing="0" cellpadding="4">
-                            <tr><td style="font-weight: bold; border: none;">Issue date</td></tr>
-                            <tr><td style="border: none;">{self.date_edit.text()}</td></tr>
-                            <tr><td style="font-weight: bold; border: none;">Reference</td></tr>
-                            <tr><td style="border: none;">{self.ref_edit.text()}</td></tr>
-                        </table>
-                    </td>
-                    <td style="width: 40%; vertical-align: top; border: none; font-size: 6pt; line-height: 1.5;" class="block">
+                    <td style="width: 50%; vertical-align: top; border: none; font-size: 6pt; line-height: 1.5; padding-left: 20px;" class="block">
                         <div class="bold" style="font-weight: bold;">{rec_bold}</div>
                         {rec_rest}
                     </td>
@@ -635,7 +633,7 @@ class PoGeneratorPage(QWidget):
         {self.intro_edit.text()}
         </div>
         
-        <table class="items">
+        <table class="items" cellspacing="1" cellpadding="0">
         <thead>
         <tr>
         <th width="5%">#</th>
@@ -649,22 +647,24 @@ class PoGeneratorPage(QWidget):
         </thead>
         <tbody>
         {rows_html}
-        <tr>
-        <td colspan="4" style="border: none; border-right: 1px solid black;"></td>
-        <td colspan="2" class="right" style="padding: 8px;"><b>Sub-total</b></td>
-        <td class="right" style="padding: 8px;">{subtotal_str}</td>
-        </tr>
-        <tr>
-        <td colspan="4" style="border: none; border-right: 1px solid black;"></td>
-        <td colspan="2" class="right" style="padding: 8px;"><b>GST 18%</b></td>
-        <td class="right" style="padding: 8px;">{gst_str}</td>
-        </tr>
-        <tr>
-        <td colspan="4" style="border: none; border-right: 1px solid black;"></td>
-        <td colspan="2" class="right grand" style="padding: 8px;"><span class="grand">Grand Total</span></td>
-        <td class="right grand" style="padding: 8px;"><span class="grand">{grand_total_str}</span></td>
-        </tr>
         </tbody>
+        </table>
+        
+        <div style="height: 15px;"></div>
+        
+        <table style="width: 300px; float: right; border-collapse: collapse; font-size: 6pt; font-weight: bold;">
+        <tr>
+            <td style="padding: 8px; border: 1px solid black;">Sub-total</td>
+            <td class="right" style="padding: 8px; border: 1px solid black;">{subtotal_str}</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px; border: 1px solid black;">GST 18%</td>
+            <td class="right" style="padding: 8px; border: 1px solid black;">{gst_str}</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px; border: 1px solid black;">Grand Total</td>
+            <td class="right" style="padding: 8px; border: 1px solid black;">{grand_total_str}</td>
+        </tr>
         </table>
         
         <div style="clear:both"></div>
@@ -711,7 +711,5 @@ class PoGeneratorPage(QWidget):
             doc.setPageSize(printer.pageRect(QPrinter.DevicePixel).size())
             
             doc.print_(printer)
-            
-            QMessageBox.information(self, "Success", f"Purchase Order saved successfully as PDF to:\n{filename}")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to save PDF file:\n{str(e)}")

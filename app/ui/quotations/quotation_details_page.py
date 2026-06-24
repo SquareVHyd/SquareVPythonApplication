@@ -13,6 +13,7 @@ from app.ui.quotations.quotation_preview import QuotationPreviewPage
 from app.ui.quotations.quotation_revision_page import QuotationRevisionPage
 from app.ui.quotations.reports.cost_summary_page import CostSummaryPage
 from app.ui.quotations.reports.po_generator_page import PoGeneratorPage
+from app.ui.sld_analyzer.sld_page import SldPage
 
 class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
     """A dedicated page for Quotation management with a sidebar layout."""
@@ -72,6 +73,11 @@ class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
         self.po_generator_btn.setToolTip("Generate a Purchase Order for this quotation")
         self.po_generator_btn.setEnabled(False)
 
+        self.sld_analyzer_btn = QPushButton("📏 SLD Analyzer")
+        self.sld_analyzer_btn.clicked.connect(self.show_sld_analyzer)
+        self.sld_analyzer_btn.setToolTip("View General Arrangement diagrams for this quotation")
+        self.sld_analyzer_btn.setEnabled(False)
+
 
         self.panels_btn = QPushButton("🔌 Panels")
         self.panels_btn.clicked.connect(self.show_panels)
@@ -96,6 +102,7 @@ class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
         sidebar_layout.addWidget(self.items_btn)
         sidebar_layout.addWidget(self.cost_summary_btn)
         sidebar_layout.addWidget(self.po_generator_btn)
+        sidebar_layout.addWidget(self.sld_analyzer_btn)
         sidebar_layout.addStretch()
 
         # Close button to return to main ERP (now switches back to dashboard)
@@ -124,6 +131,7 @@ class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
         self.revision_page = QuotationRevisionPage(self)
         self.cost_summary_page = CostSummaryPage(self)
         self.po_generator_page = PoGeneratorPage(self)
+        self.sld_page = SldPage(self)
 
         self.pages.addWidget(self.welcome_page)
         self.pages.addWidget(self.quotation_page)
@@ -135,6 +143,7 @@ class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
         self.pages.addWidget(self.revision_page)
         self.pages.addWidget(self.cost_summary_page)
         self.pages.addWidget(self.po_generator_page)
+        self.pages.addWidget(self.sld_page)
 
         self.splitter.addWidget(sidebar_frame)
         self.splitter.addWidget(self.pages)
@@ -190,6 +199,7 @@ class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
         self.preview_btn.setEnabled(enabled)
         self.cost_summary_btn.setEnabled(enabled)
         self.po_generator_btn.setEnabled(enabled)
+        self.sld_analyzer_btn.setEnabled(enabled)
         self.panels_btn.setEnabled(enabled)
         self.panel_modules_btn.setEnabled(enabled)
         self.items_btn.setEnabled(enabled)
@@ -254,5 +264,15 @@ class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
             quote_id = int(self.quotation_page.table.item(row, 0).text())
             self.po_generator_page.load_quotation(quote_id)
             self.pages.setCurrentWidget(self.po_generator_page)
+        else:
+            QMessageBox.warning(self, "Selection Required", "Please select a quotation first.")
+            
+    def show_sld_analyzer(self):
+        selected = self.quotation_page.table.selectionModel().selectedRows()
+        if selected:
+            row = selected[0].row()
+            quote_id = int(self.quotation_page.table.item(row, 0).text())
+            self.sld_page.load_quotation(quote_id)
+            self.pages.setCurrentWidget(self.sld_page)
         else:
             QMessageBox.warning(self, "Selection Required", "Please select a quotation first.")

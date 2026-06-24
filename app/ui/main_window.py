@@ -44,17 +44,19 @@ class MainWindow(QMainWindow):
         self.main_splitter.setHandleWidth(1)
         self.main_splitter.setStyleSheet("QSplitter::handle { background-color: #e2e8f0; }")
 
-        sidebar_frame = QFrame()
-        sidebar_frame.setObjectName("sidebar")
-        sidebar_frame.setMinimumWidth(200)
-        sidebar_frame.setMaximumWidth(400)
-        sidebar_layout = QVBoxLayout(sidebar_frame)
+        self.sidebar_frame = QFrame()
+        self.sidebar_frame.setObjectName("sidebar")
+        self.sidebar_frame.setMinimumWidth(200)
+        self.sidebar_frame.setMaximumWidth(400)
+        sidebar_layout = QVBoxLayout(self.sidebar_frame)
         sidebar_layout.setContentsMargins(20, 20, 20, 20)
         sidebar_layout.setSpacing(12)
 
-        title = QLabel("Menu")
-        title.setObjectName("appTitle")
-        title.setAlignment(Qt.AlignCenter)
+        self.toggle_btn = QPushButton("☰ Menu")
+        self.toggle_btn.setObjectName("appTitle")
+        self.toggle_btn.setCursor(Qt.PointingHandCursor)
+        self.toggle_btn.clicked.connect(self.toggle_sidebar)
+        self.sidebar_collapsed = False
 
         self.shortcuts_tip = (
             "<b>Keyboard Shortcuts:</b><br>"
@@ -78,7 +80,6 @@ class MainWindow(QMainWindow):
         self.utilities_btn = QPushButton("🔧 Utilities")
         self.tools_btn = QPushButton("🛠️ Tools")
         self.master_btn = QPushButton("📋 Master Data")
-        self.sld_btn = QPushButton("📏 SLD Analyzer")
 
         self.dashboard_btn.setToolTip(self.shortcuts_tip)
         self.customers_btn.setToolTip(self.shortcuts_tip)
@@ -99,7 +100,6 @@ class MainWindow(QMainWindow):
         self.utilities_btn.clicked.connect(self.show_utilities)
         self.tools_btn.clicked.connect(self.show_tools)
         self.master_btn.clicked.connect(self.show_master)
-        self.sld_btn.clicked.connect(self.show_sld)
 
         self.help_btn = QPushButton("❓ Help")
         self.help_btn.setToolTip(self.shortcuts_tip)
@@ -110,20 +110,24 @@ class MainWindow(QMainWindow):
         self.quit_btn.setToolTip("Save state and exit the application")
         self.quit_btn.clicked.connect(self.close)
 
-        sidebar_layout.addWidget(title)
-        sidebar_layout.addWidget(self.dashboard_btn)
-        sidebar_layout.addWidget(self.customers_btn)
-        sidebar_layout.addWidget(self.quotation_details_btn)
-        sidebar_layout.addWidget(self.pricelist_btn)
-        sidebar_layout.addWidget(self.generic_spec_btn)
-        sidebar_layout.addWidget(self.modules_btn)
-        sidebar_layout.addWidget(self.busbar_btn)
-        sidebar_layout.addWidget(self.master_btn)
-        sidebar_layout.addWidget(self.utilities_btn)
-        sidebar_layout.addWidget(self.tools_btn)
-        sidebar_layout.addWidget(self.sld_btn)
-        sidebar_layout.addWidget(self.help_btn)
-        sidebar_layout.addWidget(self.quit_btn)
+        self.menu_buttons = [
+            self.dashboard_btn,
+            self.customers_btn,
+            self.quotation_details_btn,
+            self.pricelist_btn,
+            self.generic_spec_btn,
+            self.modules_btn,
+            self.busbar_btn,
+            self.master_btn,
+            self.utilities_btn,
+            self.tools_btn,
+            self.help_btn,
+            self.quit_btn
+        ]
+
+        sidebar_layout.addWidget(self.toggle_btn)
+        for btn in self.menu_buttons:
+            sidebar_layout.addWidget(btn)
         sidebar_layout.addStretch()
         
 
@@ -139,14 +143,13 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(MasterDataPage())
         self.pages.addWidget(QuotationDetailsPage(self)) # Index 6
         self.pages.addWidget(GenericSpecPage()) # Index 7
-        self.pages.addWidget(SldPage()) # Index 8
 
         self.shortcut_help = QShortcut(QKeySequence("F1"), self)
         self.shortcut_help.activated.connect(self.show_shortcuts)
         self.shortcut_help2 = QShortcut(QKeySequence("Ctrl+H"), self)
         self.shortcut_help2.activated.connect(self.show_shortcuts)
 
-        self.main_splitter.addWidget(sidebar_frame)
+        self.main_splitter.addWidget(self.sidebar_frame)
         self.main_splitter.addWidget(self.pages)
         self.main_splitter.setChildrenCollapsible(False) # Ensure both sides of the splitter remain visible and resizable
         self.main_splitter.setStretchFactor(1, 1)
@@ -154,13 +157,30 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.main_splitter)
         self.setStyleSheet(
             "#sidebar { background-color: #f0f2f5; } "
-            "#appTitle { font-size: 20px; font-weight: bold; margin-bottom: 16px; } "
+            "#appTitle { font-size: 20px; font-weight: bold; margin-bottom: 16px; border: none; background: transparent; text-align: left; } "
+            "#appTitle:hover { background-color: #e2e8f0; border-radius: 4px; } "
             "#quitButton { color: #d32f2f; font-weight: bold; } "
             "QHeaderView::section { background-color: #fce4ec; border: 1px solid #e2e8f0; padding: 4px; font-weight: bold; }"
         )
         
         # Always open the dashboard page on login/startup
         self.pages.setCurrentIndex(0)
+
+    def toggle_sidebar(self):
+        self.sidebar_collapsed = not self.sidebar_collapsed
+        if self.sidebar_collapsed:
+            for btn in self.menu_buttons:
+                btn.hide()
+            self.sidebar_frame.setMinimumWidth(60)
+            self.sidebar_frame.setMaximumWidth(60)
+            self.toggle_btn.setText("☰")
+        else:
+            for btn in self.menu_buttons:
+                btn.show()
+            self.sidebar_frame.setMinimumWidth(200)
+            self.sidebar_frame.setMaximumWidth(400)
+            self.toggle_btn.setText("☰ Menu")
+
 
 
     def closeEvent(self, event):
@@ -234,10 +254,6 @@ class MainWindow(QMainWindow):
     def show_master(self):
         self.pages.setCurrentIndex(5)
         UIStateManager.save_current_page(5)
-
-    def show_sld(self):
-        self.pages.setCurrentIndex(8)
-        UIStateManager.save_current_page(8)
 
     def show_quotation_details(self):
         """Switches to the Quotation Details page within the main window."""

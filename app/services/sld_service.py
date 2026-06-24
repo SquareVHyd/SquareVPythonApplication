@@ -23,7 +23,7 @@ class SldAnalyzerService:
         """Fetches panels with their physical dimensions for SLD generation."""
         query = text("""
                 SELECT "ID", "PanelName", "PanelQty",
-                       "LengthXmm", "HeightYmm", "DepthZmm"
+                       "LengthXmm", "HeightYmm", "DepthZmm", "StandRequired"
                 FROM public."tbl_Panels" 
                 WHERE "QuoteID" = :quote_id 
                 ORDER BY "ID"
@@ -34,4 +34,20 @@ class SldAnalyzerService:
                 return [tuple(row) for row in result.fetchall()]
             except Exception as e:
                 print(f"Error fetching panels for SLD: {e}")
+                return []
+
+    def get_panel_modules(self, panel_id):
+        """Fetches modules for a given panel."""
+        query = text("""
+                SELECT pm."IngOg" as "DriveDescription", pm."PanelModQty", pm."IngOg", pm."Protection"
+                FROM public."tbl_PanelModules" pm
+                WHERE pm."PanelID" = :panel_id
+                ORDER BY pm."ID"
+        """)
+        with get_session() as session:
+            try:
+                result = session.execute(query, {"panel_id": panel_id})
+                return [tuple(row) for row in result.fetchall()]
+            except Exception as e:
+                print(f"Error fetching modules for panel: {e}")
                 return []

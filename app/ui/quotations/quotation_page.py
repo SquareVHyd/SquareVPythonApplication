@@ -12,6 +12,7 @@ from app.ui.quotations.quotation_form import QuotationForm
 from app.ui.quotations.quotation_ctc_dialog import QuotationCTCDialog
 from app.ui.quotations.module_items.module_items_viewer_dialog import ModuleItemsViewerDialog
 from app.ui.quotations.quotation_preview_dialog import QuotationPreviewDialog
+from app.ui.quotations.reports.test_reports_page import TestReportsPage
 from app.ui.searchable_table import SearchableTable, NumericTableWidgetItem
 from app.utils.worker_thread import Worker
 
@@ -379,12 +380,13 @@ class QuotationPage(QWidget):
         row = item.row()
         quote_id = int(self.table.item(row, 0).text())
         project_name = self.table.item(row, 7).text()
+        ref_id = self.table.item(row, 5).text()
         customer_id = self.table.item(row, 1).text()
         customer_name = self.table.item(row, 2).text()
         
         menu = QMenu(self)
         
-        process_action = QAction(f"📑 Quotation Process: {project_name}", self)
+        process_action = QAction(f"📑 Quotation Process: {ref_id}", self)
         process_action.triggered.connect(lambda: self._open_quotation_process(row))
         menu.addAction(process_action)
         

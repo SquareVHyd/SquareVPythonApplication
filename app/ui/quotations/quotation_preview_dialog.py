@@ -84,8 +84,8 @@ class QuotationPreviewDialog(QDialog):
                     module_group = QGroupBox(f"Module: {module_type_name} (Ing/Og: {ing_og}, Qty: {panel_mod_qty})")
                     module_layout = QVBoxLayout(module_group)
 
-                    # Load items for this module type
-                    items = self.service.get_module_items_by_module_type_id(module_type_id)
+                    # Load items for this module instance
+                    items = self.service.get_module_items_by_panel_module_id(pm_id)
                     if not items:
                         module_layout.addWidget(QLabel("No items found for this module."))
                     else:

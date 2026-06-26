@@ -337,22 +337,25 @@ class PanelModulePage(QWidget):
             return
             
         row = selected[0].row()
-        mt_id_str = self.table.item(row, 5).text()
-        if not mt_id_str:
+        pm_id_str = self.table.item(row, 0).text()
+        if not pm_id_str:
             return
-        mt_id = int(mt_id_str)
+        pm_id = int(pm_id_str)
         mt_name = self.table.item(row, 6).text()
         m_qty_str = self.table.item(row, 4).text()
         m_qty = float(m_qty_str) if m_qty_str else 1.0
         
         self.items_label.setText(f"Module Items: {mt_name}")
         
-        self._items_worker = Worker(self.service.get_module_items_by_module_type_id, mt_id)
+        self._items_worker = Worker(self.service.get_module_items_by_panel_module_id, pm_id)
         self._items_worker.result.connect(lambda items: self._render_items(items, m_qty))
         self._items_worker.start()
 
     def _render_items(self, items, m_qty):
         self.items_table.blockSignals(True)
+        self.items_table.setSortingEnabled(False)
+        self.items_table.clearContents()
+        self.items_table.setRowCount(0)
         self.items_table.setRowCount(len(items))
         for r, item in enumerate(items):
             # item is tuple: (ID, Desc, BOM, LP, Disc, Make, Amount)
@@ -376,6 +379,7 @@ class PanelModulePage(QWidget):
                     else:
                         it.setFlags(it.flags() & ~Qt.ItemIsEditable)
         
+        self.items_table.setSortingEnabled(True)
         self.items_table.resizeColumnsToContents()
         self.items_table.blockSignals(False)
         self._items_worker = None
@@ -384,19 +388,19 @@ class PanelModulePage(QWidget):
         selected = self.table.selectionModel().selectedRows()
         if not selected: return None
         row = selected[0].row()
-        mt_id_str = self.table.item(row, 5).text()
-        if not mt_id_str: return None
-        mt_id = int(mt_id_str)
+        pm_id_str = self.table.item(row, 0).text()
+        if not pm_id_str: return None
+        pm_id = int(pm_id_str)
         m_qty_str = self.table.item(row, 4).text()
         m_qty = float(m_qty_str) if m_qty_str else 1.0
-        return mt_id, m_qty
+        return pm_id, m_qty
 
     def _add_item(self):
         info = self._get_selected_module_info()
         if not info: return
-        mt_id, m_qty = info
+        pm_id, m_qty = info
         
-        dialog = ModuleItemForm(mt_id, module_item_data={"bom": m_qty}, parent=self)
+        dialog = ModuleItemForm(pm_id, module_item_data={"bom": m_qty}, parent=self)
         if dialog.exec() == QDialog.Accepted:
             data = dialog.get_data()
             if data:
@@ -414,16 +418,16 @@ class PanelModulePage(QWidget):
     def _add_from_module(self):
         info = self._get_selected_module_info()
         if not info: return
-        mt_id, _ = info
+        pm_id, _ = info
         
-        dialog = SelectModuleItemsDialog(target_mt_id=mt_id, parent=self)
+        dialog = SelectModuleItemsDialog(target_pm_id=pm_id, parent=self)
         if dialog.exec() == QDialog.Accepted:
             self._on_module_selection_changed()
 
     def _edit_item(self):
         info = self._get_selected_module_info()
         if not info: return
-        mt_id, _ = info
+        pm_id, _ = info
         
         selected = self.items_table.selectionModel().selectedRows()
         if not selected: return
@@ -435,20 +439,20 @@ class PanelModulePage(QWidget):
         disc = float(self.items_table.item(row, 5).text().replace('%', '') or 0.0) / 100.0
 
         current_data = {
-            "module_type_id": mt_id, 
+            "module_type_id": pm_id, 
             "drive_description": desc, 
             "bom": bom, 
             "lp": lp, 
             "discount": disc
         }
         
-        dialog = ModuleItemForm(mt_id, module_item_data=current_data, parent=self)
+        dialog = ModuleItemForm(pm_id, module_item_data=current_data, parent=self)
         if dialog.exec() == QDialog.Accepted:
             data = dialog.get_data()
             if data:
                 try: 
                     self.service.update_module_item(
-                        mt_id, desc,
+                        pm_id, desc,
                         data["module_type_id"],
                         data["drive_description"],
                         data["bom"],
@@ -461,7 +465,7 @@ class PanelModulePage(QWidget):
     def _delete_item(self):
         info = self._get_selected_module_info()
         if not info: return
-        mt_id, _ = info
+        pm_id, _ = info
         
         selected = self.items_table.selectionModel().selectedRows()
         if not selected: return
@@ -470,7 +474,7 @@ class PanelModulePage(QWidget):
             try:
                 for idx in sorted(selected, key=lambda x: x.row(), reverse=True):
                     desc = self.items_table.item(idx.row(), 1).text()
-                    self.service.delete_module_item(mt_id, desc)
+                    self.service.delete_module_item(pm_id, desc)
                 self._on_module_selection_changed()
             except Exception as e: QMessageBox.critical(self, "Error", str(e))
 
@@ -480,7 +484,7 @@ class PanelModulePage(QWidget):
         
         info = self._get_selected_module_info()
         if not info: return
-        mt_id, _ = info
+        pm_id, _ = info
 
         self.items_table.blockSignals(True)
         try:
@@ -495,12 +499,20 @@ class PanelModulePage(QWidget):
             lp = safe_num(self.items_table.item(row, 4).text(), 0.0)
             disc = safe_num(self.items_table.item(row, 5).text(), 0.0) / 100.0
             
-            self.service.update_module_item(mt_id, desc, mt_id, desc, bom, lp, disc)
-            # Re-render to update Amount. But this might cause focus loss, we will just call reload data
-            QTimer.singleShot(100, self._on_module_selection_changed)
-        except Exception as e: 
-            print(f"Error during inline update: {e}")
-        finally: 
+            self.service.update_module_item(pm_id, desc, pm_id, desc, bom, lp, disc)
+            amt = bom * lp * (1 - disc)
+            it_amt = self.items_table.item(row, 6)
+            
+            def deferred_ui_update():
+                if it_amt: it_amt.setText(f"{amt:g}")
+                self._update_cost_summary()
+
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, deferred_ui_update)
+            
+        except Exception as e:
+            print(f"Error handling module item edit: {e}")
+        finally:
             self.items_table.blockSignals(False)
 
     def _handle_item_changed(self, item):

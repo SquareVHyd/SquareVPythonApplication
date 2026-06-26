@@ -114,7 +114,7 @@ class QuotationPreviewPage(QWidget):
         # 1. Quotation Details Section
         quote_data = self.service.get_quotation_by_id(self.quote_id)
         if quote_data:
-            self.title_label.setText(f"Preview: {quote_data.get('QuoteProjectName', 'N/A')}")
+            self.title_label.setText(f"Preview: {quote_data.get('QuoteRereceNo', 'N/A')} - {quote_data.get('QuoteProjectName', '')}")
             self._add_quotation_header(quote_data)
 
             from PySide6.QtWidgets import QPushButton
@@ -154,8 +154,8 @@ class QuotationPreviewPage(QWidget):
             p_panel_total = 0.0
             for m_row in p_modules:
                 m_qty = m_row[5]
-                mt_id = m_row[6]
-                m_items = self.service.get_module_items_by_module_type_id(mt_id)
+                pm_id = m_row[0]
+                m_items = self.service.get_module_items_by_panel_module_id(pm_id)
                 total_items_amount = sum(float(item[6] or 0) for item in m_items)
                 p_panel_total += float(m_qty or 0) * total_items_amount
             grand_total += p_panel_total * p_qty
@@ -236,8 +236,8 @@ class QuotationPreviewPage(QWidget):
         panel_total = 0.0
         for m_row in modules:
             m_qty = m_row[5]
-            mt_id = m_row[6]
-            m_items = self.service.get_module_items_by_module_type_id(mt_id)
+            pm_id = m_row[0]
+            m_items = self.service.get_module_items_by_panel_module_id(pm_id)
             total_items_amount = sum(float(item[6] or 0) for item in m_items)
             panel_total += float(m_qty or 0) * total_items_amount
         total_panel_cost = panel_total * panel_qty
@@ -313,7 +313,7 @@ class QuotationPreviewPage(QWidget):
         pm_id, pid, p_name, p_qty, ing_og, m_qty, mt_id, mt_name, pole, ka, rel, prot, rem = m_row
         
         # Fetch items first to calculate total module cost
-        items = self.service.get_module_items_by_module_type_id(mt_id)
+        items = self.service.get_module_items_by_panel_module_id(pm_id)
         total_items_amount = sum(float(item[6] or 0) for item in items)
         module_total = float(m_qty or 0) * total_items_amount
 
@@ -347,11 +347,11 @@ class QuotationPreviewPage(QWidget):
         m_del_btn.clicked.connect(lambda: self._delete_module(pm_id))
         m_add_item_btn = QPushButton("➕ Item")
         m_add_item_btn.setFixedSize(60, 24)
-        m_add_item_btn.clicked.connect(lambda: self._add_item(mt_id, m_qty)) # Pass m_qty here
+        m_add_item_btn.clicked.connect(lambda: self._add_item(pm_id, m_qty)) # Pass m_qty here
 
         m_add_from_mod_btn = QPushButton("📂 From Library") # New button
         m_add_from_mod_btn.setFixedSize(100, 24)
-        m_add_from_mod_btn.clicked.connect(lambda: self._add_from_module(mt_id)) # Pass mt_id here
+        m_add_from_mod_btn.clicked.connect(lambda: self._add_from_module(pm_id)) # Pass pm_id here
 
         mod_header.addWidget(toggle_btn)
         mod_header.addWidget(mod_lbl)
@@ -404,10 +404,10 @@ class QuotationPreviewPage(QWidget):
                 actions_layout.setSpacing(4)
                 
                 i_edit = QPushButton("✏️"); i_edit.setFixedSize(20, 20)
-                i_edit.clicked.connect(lambda _, it=item, mid=mt_id: self._edit_item(mid, it))
+                i_edit.clicked.connect(lambda _, it=item, pmid=pm_id: self._edit_item(pmid, it))
                 
                 i_del = QPushButton("🗑️"); i_del.setFixedSize(20, 20)
-                i_del.clicked.connect(lambda _, it=item, mid=mt_id: self._delete_item(mid, it))
+                i_del.clicked.connect(lambda _, it=item, pmid=pm_id: self._delete_item(pmid, it))
                 
                 actions_layout.addWidget(i_edit)
                 actions_layout.addWidget(i_del)
@@ -510,13 +510,13 @@ class QuotationPreviewPage(QWidget):
             self.service.delete_panel_module(pm_id)
             self.refresh_view()
 
-    def _add_item(self, mt_id, panel_mod_qty):
-        # The ModuleItemForm expects module_type_id as the first argument
-        dialog = ModuleItemForm(mt_id, module_item_data={"bom": panel_mod_qty}, parent=self)
+    def _add_item(self, pm_id, panel_mod_qty):
+        # The ModuleItemForm expects module_type_id as the first argument (now treating it as pm_id)
+        dialog = ModuleItemForm(pm_id, module_item_data={"bom": panel_mod_qty}, parent=self)
         if dialog.exec():
             d = dialog.get_data()
             self.service.create_module_item(
-                d["module_type_id"],
+                d["module_type_id"], # This contains the pm_id now
                 d["drive_description"],
                 d["bom"],
                 d["lp"],
@@ -524,34 +524,34 @@ class QuotationPreviewPage(QWidget):
             )
             self.refresh_view()
 
-    def _edit_item(self, mt_id, item_row):
+    def _edit_item(self, pm_id, item_row):
         # item_row: (ID, DriveDescription, BOM, LP, Disc)
         old_desc = item_row[1]
         current_data = {
-            "module_type_id": mt_id, # This is the ID for tbl_PnlModuleType
+            "module_type_id": pm_id, # This is the ID for tbl_PanelModules
             "drive_description": item_row[1],
             "bom": float(item_row[2] or 0),
             "lp": float(item_row[3] or 0),
             "discount": float(item_row[4] or 0)
         }
-        # ModuleItemForm expects module_type_id as the first argument
-        dialog = ModuleItemForm(mt_id, module_item_data=current_data, parent=self)
+        # ModuleItemForm expects module_type_id as the first argument (now acting as pm_id)
+        dialog = ModuleItemForm(pm_id, module_item_data=current_data, parent=self)
         if dialog.exec():
             d = dialog.get_data()
             self.service.update_module_item(
-                mt_id, old_desc,  # Old PK components
+                pm_id, old_desc,  # Old PK components
                 d["module_type_id"], d["drive_description"], d["bom"], d["lp"], d["discount"] # New Data components
             )
             self.refresh_view()
 
-    def _delete_item(self, mt_id, item_row):
+    def _delete_item(self, pm_id, item_row):
         desc = item_row[1]
         if QMessageBox.question(self, "Confirm", f"Remove item '{desc}' from this module type?") == QMessageBox.Yes:
-            self.service.delete_module_item(mt_id, desc)
+            self.service.delete_module_item(pm_id, desc)
             self.refresh_view()
 
-    def _add_from_module(self, mt_id):
-        dialog = SelectModuleItemsDialog(target_mt_id=mt_id, parent=self)
+    def _add_from_module(self, pm_id):
+        dialog = SelectModuleItemsDialog(target_pm_id=pm_id, parent=self)
         if dialog.exec() == QDialog.Accepted:
             self.refresh_view()
 

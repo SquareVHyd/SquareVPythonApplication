@@ -161,6 +161,11 @@ class PoGeneratorPage(QWidget):
         self.title_label = QLabel("PO Generator")
         self.title_label.setStyleSheet("font-size: 22px; font-weight: bold; color: #0f172a;")
         header.addWidget(self.title_label)
+        
+        self.selected_make_display = QLabel("")
+        self.selected_make_display.setStyleSheet("font-size: 14px; font-weight: bold; color: #2563eb; margin-left: 20px;")
+        header.addWidget(self.selected_make_display)
+        
         header.addStretch()
         
         header.addWidget(QLabel("<b>Filter by Make:</b>"))
@@ -272,10 +277,21 @@ class PoGeneratorPage(QWidget):
         
         layout.addLayout(bottom_details_layout)
         
+        # Add the Remove from PO Button here
+        table_header_layout = QHBoxLayout()
+        self.remove_btn = QPushButton("❌ Remove Selected Item")
+        self.remove_btn.setStyleSheet("background-color: #ef4444; color: white; font-weight: bold; padding: 4px 12px; border-radius: 4px;")
+        self.remove_btn.setEnabled(False)
+        self.remove_btn.clicked.connect(self.remove_selected_item)
+        table_header_layout.addStretch()
+        table_header_layout.addWidget(self.remove_btn)
+        layout.addLayout(table_header_layout)
+        
         self.table = SearchableTable()
-        self.table.setColumnCount(7)
-        self.table.setHorizontalHeaderLabels(["#", "Description", "Qty", "Unit price", "Price", "Discount %", "Total"])
+        self.table.setColumnCount(9)
+        self.table.setHorizontalHeaderLabels(["#", "Description", "Make", "Model", "Qty", "Unit price", "Price", "Discount %", "Total"])
         self.table.itemChanged.connect(self.calculate_row_totals)
+        self.table.itemSelectionChanged.connect(self.on_table_selection_changed)
         
         # Make the table resize nicely like the steel specification table
         self.table.horizontalHeader().setStretchLastSection(True)
@@ -315,6 +331,30 @@ class PoGeneratorPage(QWidget):
         # Add calc frame to the layout
         layout.addWidget(calc_frame)
 
+    def on_table_selection_changed(self):
+        selected_items = self.table.selectedItems()
+        self.remove_btn.setEnabled(len(selected_items) > 0)
+        
+    def remove_selected_item(self):
+        selected_ranges = self.table.selectedRanges()
+        if not selected_ranges:
+            return
+            
+        # Get all unique rows from selected ranges and sort in reverse to delete from bottom up
+        rows_to_delete = set()
+        for r in selected_ranges:
+            for row in range(r.topRow(), r.bottomRow() + 1):
+                rows_to_delete.add(row)
+                
+        for row in sorted(list(rows_to_delete), reverse=True):
+            self.table.removeRow(row)
+            
+        # Re-number the items
+        for r in range(self.table.rowCount()):
+            self.table.item(r, 0).setText(str(r + 1))
+            
+        self.calculate_row_totals(None)
+
     def load_quotation(self, quote_id):
         self.quote_id = quote_id
         self.items_data = []
@@ -337,7 +377,7 @@ class PoGeneratorPage(QWidget):
                 MAX(pl."Model") as "Model"
             FROM public."tbl_Panels" p
             JOIN public."tbl_PanelModules" pm ON p."ID" = pm."PanelID"
-            JOIN public."tbl_ModuleItems" mi ON pm."ModuleTypeID" = mi."ID"
+            JOIN public."tbl_ModuleItems" mi ON pm."ID" = mi."ID"
             LEFT JOIN public."vwPriceList" pl ON mi."DriveDescription" = pl."ItemDescription"
             WHERE p."QuoteID" = :tid
             GROUP BY mi."DriveDescription"
@@ -376,10 +416,13 @@ class PoGeneratorPage(QWidget):
             self.selected_makes = dialog.get_selected_makes()
             if not self.selected_makes:
                 self.make_btn.setText("-- Select Makes --")
+                self.selected_make_display.setText("")
             elif len(self.selected_makes) == 1:
                 self.make_btn.setText(self.selected_makes[0])
+                self.selected_make_display.setText(f"Selected: {self.selected_makes[0]}")
             else:
                 self.make_btn.setText(f"{len(self.selected_makes)} Makes Selected")
+                self.selected_make_display.setText(f"Selected: {', '.join(self.selected_makes)}")
             self.apply_filter()
 
     def apply_filter(self):
@@ -403,8 +446,6 @@ class PoGeneratorPage(QWidget):
             
             # Formulate the description cell
             desc_text = desc
-            if make: desc_text += f"\nMake: {make}"
-            if model: desc_text += f"\nModel No:{model}"
             
             bom_val = float(bom or 0)
             lp_val = float(lp or 0)
@@ -422,39 +463,47 @@ class PoGeneratorPage(QWidget):
             desc_item = QTableWidgetItem(desc_text)
             self.table.setItem(r, 1, desc_item)
             
-            # Col 2: Qty
+            # Col 2: Make
+            make_item = QTableWidgetItem(make or "")
+            self.table.setItem(r, 2, make_item)
+            
+            # Col 3: Model
+            model_item = QTableWidgetItem(model or "")
+            self.table.setItem(r, 3, model_item)
+            
+            # Col 4: Qty
             qty_item = QTableWidgetItem(f"{bom_val:.0f}" if bom_val.is_integer() else f"{bom_val:.2f}")
             qty_item.setTextAlignment(Qt.AlignCenter)
-            self.table.setItem(r, 2, qty_item)
+            self.table.setItem(r, 4, qty_item)
             
-            # Col 3: Unit Price
+            # Col 5: Unit Price
             up_item = QTableWidgetItem(f"{lp_val:.2f}")
             up_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.table.setItem(r, 3, up_item)
+            self.table.setItem(r, 5, up_item)
             
-            # Col 4: Price (Read-only initially)
+            # Col 6: Price (Read-only initially)
             price_item = QTableWidgetItem(f"{price:,.2f}")
             price_item.setFlags(price_item.flags() & ~Qt.ItemIsEditable)
             price_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.table.setItem(r, 4, price_item)
+            self.table.setItem(r, 6, price_item)
             
-            # Col 5: Discount
+            # Col 7: Discount
             disc_item = QTableWidgetItem(f"{disc_val * 100:.2f}")
             disc_item.setTextAlignment(Qt.AlignCenter)
-            self.table.setItem(r, 5, disc_item)
+            self.table.setItem(r, 7, disc_item)
             
-            # Col 6: Total (Read-only initially)
+            # Col 8: Total (Read-only initially)
             total_item = QTableWidgetItem(f"{total:,.2f}")
             total_item.setFlags(total_item.flags() & ~Qt.ItemIsEditable)
             total_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.table.setItem(r, 6, total_item)
+            self.table.setItem(r, 8, total_item)
             
         self.table.resizeRowsToContents()
         self.table.blockSignals(False)
         self.calculate_row_totals(None)
 
     def calculate_row_totals(self, item):
-        if item and item.column() not in (2, 3, 5):
+        if item and item.column() not in (4, 5, 7):
             return
             
         self.table.blockSignals(True)
@@ -465,15 +514,15 @@ class PoGeneratorPage(QWidget):
             except: return 0.0
 
         for r in range(self.table.rowCount()):
-            qty = safe_float(self.table.item(r, 2).text())
-            unit_price = safe_float(self.table.item(r, 3).text())
-            disc_pct = safe_float(self.table.item(r, 5).text()) / 100.0
+            qty = safe_float(self.table.item(r, 4).text())
+            unit_price = safe_float(self.table.item(r, 5).text())
+            disc_pct = safe_float(self.table.item(r, 7).text()) / 100.0
             
             price = qty * unit_price
             total = price * (1 - disc_pct)
             
-            self.table.item(r, 4).setText(f"{price:,.2f}")
-            self.table.item(r, 6).setText(f"{total:,.2f}")
+            self.table.item(r, 6).setText(f"{price:,.2f}")
+            self.table.item(r, 8).setText(f"{total:,.2f}")
             subtotal += total
             
         self.subtotal_val = subtotal
@@ -491,16 +540,20 @@ class PoGeneratorPage(QWidget):
         rows_html = ""
         for r in range(self.table.rowCount()):
             desc = self.table.item(r, 1).text().replace('\n', '<br>')
-            qty = self.table.item(r, 2).text()
-            uprice = self.table.item(r, 3).text()
-            price = self.table.item(r, 4).text()
-            disc = self.table.item(r, 5).text() + " %"
-            total = self.table.item(r, 6).text()
+            make = self.table.item(r, 2).text().replace('\n', '<br>')
+            model = self.table.item(r, 3).text().replace('\n', '<br>')
+            qty = self.table.item(r, 4).text()
+            uprice = self.table.item(r, 5).text()
+            price = self.table.item(r, 6).text()
+            disc = self.table.item(r, 7).text() + " %"
+            total = self.table.item(r, 8).text()
             
             rows_html += f"""
             <tr>
             <td class="center">{r+1}</td>
             <td class="description">{desc}</td>
+            <td class="center">{make}</td>
+            <td class="center">{model}</td>
             <td class="center">{qty}</td>
             <td class="right">{uprice}</td>
             <td class="right">{price}</td>
@@ -636,13 +689,15 @@ class PoGeneratorPage(QWidget):
         <table class="items" cellspacing="1" cellpadding="0">
         <thead>
         <tr>
-        <th width="5%">#</th>
-        <th width="43%">Description</th>
-        <th width="8%">Qty</th>
-        <th width="10%">Unit price</th>
-        <th width="12%">Price</th>
-        <th width="10%">Discount</th>
-        <th width="12%">Total</th>
+        <th width="4%">#</th>
+        <th width="28%">Description</th>
+        <th width="10%">Make</th>
+        <th width="15%">Model</th>
+        <th width="6%">Qty</th>
+        <th width="9%">Unit price</th>
+        <th width="10%">Price</th>
+        <th width="8%">Discount</th>
+        <th width="10%">Total</th>
         </tr>
         </thead>
         <tbody>

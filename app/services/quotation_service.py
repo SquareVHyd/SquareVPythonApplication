@@ -345,9 +345,9 @@ class QuotationService:
                 session.rollback()
                 raise
 
-    def get_module_items_by_module_type_id(self, module_type_id):
+    def get_module_items_by_panel_module_id(self, pm_id):
         """
-        Fetches all items from tbl_ModuleItems for a specific ModuleTypeID.
+        Fetches all items from tbl_ModuleItems for a specific PanelModuleID (pm_id).
         """
         query = text("""
                 SELECT 
@@ -357,30 +357,29 @@ class QuotationService:
                     (CAST(mi."BOM" AS NUMERIC) * CAST(mi."LP" AS NUMERIC) * (1 - CAST(mi."%Discount" AS NUMERIC))) as "Amount"
                 FROM public."tbl_ModuleItems" mi
                 LEFT JOIN public."vwPriceList" pl ON mi."DriveDescription" = pl."ItemDescription"
-                WHERE mi."ID" = :module_type_id
+                WHERE mi."ID" = :pm_id
                 ORDER BY mi."DriveDescription"
         """)
         with get_session() as session:
             try:
-                result = session.execute(query, {"module_type_id": module_type_id})
+                result = session.execute(query, {"pm_id": pm_id})
                 return [tuple(row) for row in result.fetchall()]
             except Exception as e:
                 print(f"Error fetching module items: {e}")
                 return []
 
-    def create_module_item(self, module_type_id, drive_description, bom, lp, discount, selection, sequence_number=None):
-        """Inserts a new module item record."""
+    def create_module_item(self, pm_id, drive_description, bom, lp, discount, selection, sequence_number=None):
+        """Inserts a new module item record linked to a specific panel module."""
         query = text("""
                 INSERT INTO public."tbl_ModuleItems" (
                     "ID", "DriveDescription", "BOM", "LP", "%Discount"
-                ) VALUES (:module_type_id, :drive_description, :bom, :lp, :discount)
+                ) VALUES (:pm_id, :drive_description, :bom, :lp, :discount)
         """)
         params = {
-            "module_type_id": module_type_id,
+            "pm_id": pm_id,
             "drive_description": drive_description,
             "bom": bom,
             "lp": lp,
-            "discount": discount,
             "discount": discount
         }
         with get_session() as session:
@@ -412,7 +411,7 @@ class QuotationService:
                 session.rollback()
                 raise
 
-    def update_module_item(self, old_module_type_id, old_drive_description, module_type_id, drive_description, bom, lp, discount, selection, sequence_number=None):
+    def update_module_item(self, old_pm_id, old_drive_description, pm_id, drive_description, bom, lp, discount, selection, sequence_number=None):
         """Updates an existing module item record using its composite primary key.
         Handles cases where DriveDescription (part of PK) might change by deleting old and inserting new.
         """
@@ -420,19 +419,18 @@ class QuotationService:
             try:
                 if drive_description != old_drive_description:
                     # If DriveDescription (part of PK) changes, delete old and insert new
-                    session.execute(text('DELETE FROM public."tbl_ModuleItems" WHERE "ID" = :old_mt_id AND "DriveDescription" = :old_desc'),
-                                    {"old_mt_id": old_module_type_id, "old_desc": old_drive_description})
+                    session.execute(text('DELETE FROM public."tbl_ModuleItems" WHERE "ID" = :old_pm_id AND "DriveDescription" = :old_desc'),
+                                    {"old_pm_id": old_pm_id, "old_desc": old_drive_description})
                     
                     session.execute(text("""
                         INSERT INTO public."tbl_ModuleItems" (
                             "ID", "DriveDescription", "BOM", "LP", "%Discount"
-                        ) VALUES (:module_type_id, :drive_description, :bom, :lp, :discount)
+                        ) VALUES (:pm_id, :drive_description, :bom, :lp, :discount)
                     """), {
-                        "module_type_id": module_type_id,
+                        "pm_id": pm_id,
                         "drive_description": drive_description,
                         "bom": bom,
                         "lp": lp,
-                        "discount": discount,
                         "discount": discount
                     })
                 else:
@@ -440,14 +438,13 @@ class QuotationService:
                     query = text("""
                             UPDATE public."tbl_ModuleItems" SET 
                                 "BOM" = :bom, "LP" = :lp, "%Discount" = :discount
-                            WHERE "ID" = :module_type_id AND "DriveDescription" = :drive_description
+                            WHERE "ID" = :pm_id AND "DriveDescription" = :drive_description
                     """)
                     params = {
-                        "module_type_id": module_type_id,
+                        "pm_id": pm_id,
                         "drive_description": drive_description,
                         "bom": bom,
                         "lp": lp,
-                        "discount": discount,
                         "discount": discount
                     }
                     session.execute(query, params)
@@ -460,59 +457,59 @@ class QuotationService:
         """Replaces a module item with another item across all panels in a given quotation."""
         with get_session() as session:
             try:
-                # Find all ModuleTypeIDs for this quote where old_desc exists
+                # Find all PanelModuleIDs for this quote where old_desc exists
                 sql = text("""
                     SELECT DISTINCT mi."ID"
                     FROM public."tbl_ModuleItems" mi
-                    JOIN public."tbl_PanelModules" pm ON pm."ModuleTypeID" = mi."ID"
+                    JOIN public."tbl_PanelModules" pm ON pm."ID" = mi."ID"
                     JOIN public."tbl_Panels" p ON p."ID" = pm."PanelID"
                     WHERE p."QuoteID" = :quote_id AND mi."DriveDescription" = :old_desc
                 """)
-                mt_ids = [row[0] for row in session.execute(sql, {"quote_id": quote_id, "old_desc": old_desc}).fetchall()]
+                pm_ids = [row[0] for row in session.execute(sql, {"quote_id": quote_id, "old_desc": old_desc}).fetchall()]
                 
-                if not mt_ids:
+                if not pm_ids:
                     return
 
-                for mt_id in mt_ids:
+                for pm_id in pm_ids:
                     if old_desc != new_desc:
                         # check if the new_desc already exists in this module type
-                        check_sql = text('SELECT 1 FROM public."tbl_ModuleItems" WHERE "ID" = :mt_id AND "DriveDescription" = :new_desc')
-                        exists = session.execute(check_sql, {"mt_id": mt_id, "new_desc": new_desc}).scalar()
+                        check_sql = text('SELECT 1 FROM public."tbl_ModuleItems" WHERE "ID" = :pm_id AND "DriveDescription" = :new_desc')
+                        exists = session.execute(check_sql, {"pm_id": pm_id, "new_desc": new_desc}).scalar()
                         if exists:
                             # new item exists, delete old and update existing new
-                            session.execute(text('DELETE FROM public."tbl_ModuleItems" WHERE "ID" = :mt_id AND "DriveDescription" = :old_desc'),
-                                            {"mt_id": mt_id, "old_desc": old_desc})
+                            session.execute(text('DELETE FROM public."tbl_ModuleItems" WHERE "ID" = :pm_id AND "DriveDescription" = :old_desc'),
+                                            {"pm_id": pm_id, "old_desc": old_desc})
                             session.execute(text("""
                                 UPDATE public."tbl_ModuleItems" 
                                 SET "BOM" = :bom, "LP" = :lp, "%Discount" = :discount 
-                                WHERE "ID" = :mt_id AND "DriveDescription" = :new_desc
-                            """), {"bom": new_bom, "lp": new_lp, "discount": new_discount, "mt_id": mt_id, "new_desc": new_desc})
+                                WHERE "ID" = :pm_id AND "DriveDescription" = :new_desc
+                            """), {"bom": new_bom, "lp": new_lp, "discount": new_discount, "pm_id": pm_id, "new_desc": new_desc})
                         else:
                             # safe to update
                             session.execute(text("""
                                 UPDATE public."tbl_ModuleItems" 
                                 SET "DriveDescription" = :new_desc, "BOM" = :bom, "LP" = :lp, "%Discount" = :discount 
-                                WHERE "ID" = :mt_id AND "DriveDescription" = :old_desc
-                            """), {"new_desc": new_desc, "bom": new_bom, "lp": new_lp, "discount": new_discount, "mt_id": mt_id, "old_desc": old_desc})
+                                WHERE "ID" = :pm_id AND "DriveDescription" = :old_desc
+                            """), {"new_desc": new_desc, "bom": new_bom, "lp": new_lp, "discount": new_discount, "pm_id": pm_id, "old_desc": old_desc})
                     else:
                         # just update LP, BOM, Discount
                         session.execute(text("""
                             UPDATE public."tbl_ModuleItems" 
                             SET "BOM" = :bom, "LP" = :lp, "%Discount" = :discount 
-                            WHERE "ID" = :mt_id AND "DriveDescription" = :old_desc
-                        """), {"bom": new_bom, "lp": new_lp, "discount": new_discount, "mt_id": mt_id, "old_desc": old_desc})
+                            WHERE "ID" = :pm_id AND "DriveDescription" = :old_desc
+                        """), {"bom": new_bom, "lp": new_lp, "discount": new_discount, "pm_id": pm_id, "old_desc": old_desc})
 
                 session.commit()
             except Exception:
                 session.rollback()
                 raise
 
-    def delete_module_item(self, module_type_id, drive_description):
+    def delete_module_item(self, pm_id, drive_description):
         """Deletes a module item record by its composite primary key."""
         with get_session() as session:
             try:
-                session.execute(text('DELETE FROM public."tbl_ModuleItems" WHERE "ID" = :mt_id AND "DriveDescription" = :desc'),
-                                {"mt_id": module_type_id, "desc": drive_description})
+                session.execute(text('DELETE FROM public."tbl_ModuleItems" WHERE "ID" = :pm_id AND "DriveDescription" = :desc'),
+                                {"pm_id": pm_id, "desc": drive_description})
                 session.commit()
             except Exception:
                 session.rollback()
@@ -536,7 +533,7 @@ class QuotationService:
         with get_session() as session:
             return [dict(row._mapping) for row in session.execute(query, {"make": make, "mt": module_type}).fetchall()]
 
-    def bulk_add_module_items_from_vw(self, items, target_mt_id):
+    def bulk_add_module_items_from_vw(self, items, target_pm_id):
         """Handles logic: Resolve ID -> Price Lookup -> Dup Check -> Insert."""
         added, skipped = 0, 0
         with get_session() as session:
@@ -544,10 +541,10 @@ class QuotationService:
                 desc = item.get("ItemDescription")
                 qty_from_mod = item.get("Qty")
 
-                # 1. Duplicate Prevention for this specific Module Type Instance
+                # 1. Duplicate Prevention for this specific Panel Module Instance
                 exists = session.execute(
                     text('SELECT 1 FROM public."tbl_ModuleItems" WHERE "ID" = :id AND "DriveDescription" = :desc'),
-                    {"id": target_mt_id, "desc": desc}
+                    {"id": target_pm_id, "desc": desc}
                 ).scalar()
                 if exists:
                     skipped += 1; continue
@@ -575,7 +572,7 @@ class QuotationService:
                     session.execute(
                         text("""INSERT INTO public."tbl_ModuleItems" ("ID", "DriveDescription", "BOM", "LP", "%Discount") 
                                 VALUES (:id, :desc, :bom, :lp, :disc)"""),
-                        {"id": target_mt_id, "desc": desc, "bom": bom, "lp": lp, "disc": disc}
+                        {"id": target_pm_id, "desc": desc, "bom": bom, "lp": lp, "disc": disc}
                     )
                     added += 1
                 except Exception:
@@ -1103,11 +1100,11 @@ class QuotationService:
         elif "copper" in m_lower: costs["copper"] = new_val
         self.update_quote_unit_costs(quote_id, costs)
 
-    def copy_module_items(self, old_module_type_id, new_module_type_id, session=None):
+    def copy_module_items(self, old_pm_id, new_pm_id, session=None):
         def _execute(sess):
             result = sess.execute(
                 text('SELECT * FROM public."tbl_ModuleItems" WHERE "ID" = :old_id'),
-                {"old_id": old_module_type_id}
+                {"old_id": old_pm_id}
             )
             items = [dict(r._mapping) for r in result.fetchall()]
             
@@ -1128,7 +1125,7 @@ class QuotationService:
                     text("""INSERT INTO public."tbl_ModuleItems" 
                             ("ID", "DriveDescription", "BOM", "LP", "%Discount") 
                             VALUES (:id, :desc, :bom, :lp, :disc)"""),
-                    {"id": new_module_type_id, "desc": desc, "bom": old_bom, "lp": lp, "disc": disc}
+                    {"id": new_pm_id, "desc": desc, "bom": old_bom, "lp": lp, "disc": disc}
                 )
 
         if session:
@@ -1152,22 +1149,6 @@ class QuotationService:
             old_mod = dict(old_mod._mapping)
             
             old_type_id = old_mod.get("ModuleTypeID")
-            new_type_id = None
-            if old_type_id:
-                old_type_name_res = sess.execute(
-                    text('SELECT "Pnl_Module_Type" FROM public."tbl_PnlModuleType" WHERE "ID" = :id'),
-                    {"id": old_type_id}
-                ).fetchone()
-                old_type_name = old_type_name_res[0] if old_type_name_res else "Copied Module"
-                new_type_name = f"{old_type_name} (Copy)"
-                
-                new_type_res = sess.execute(
-                    text('INSERT INTO public."tbl_PnlModuleType" ("Pnl_Module_Type") VALUES (:name) RETURNING "ID"'), 
-                    {"name": new_type_name}
-                )
-                new_type_id = new_type_res.fetchone()[0]
-                
-                self.copy_module_items(old_type_id, new_type_id, sess)
             
             query = text("""
                 INSERT INTO public."tbl_PanelModules" (
@@ -1175,17 +1156,20 @@ class QuotationService:
                     "ModKa", "Release", "Protection", "Remark"
                 ) VALUES (:pid, :ingog, :qty, :typeid, :pole, :ka, :release, :prot, :rem) RETURNING "ID"
             """)
-            sess.execute(query, {
+            new_pm_res = sess.execute(query, {
                 "pid": target_panel_id,
                 "ingog": old_mod.get("IngOg"),
                 "qty": old_mod.get("PanelModQty"),
-                "typeid": new_type_id,
+                "typeid": old_type_id,
                 "pole": old_mod.get("ModPole"),
                 "ka": old_mod.get("ModKa"),
                 "release": old_mod.get("Release"),
                 "prot": old_mod.get("Protection"),
                 "rem": old_mod.get("Remark")
             })
+            new_pm_id = new_pm_res.fetchone()[0]
+            
+            self.copy_module_items(module_id, new_pm_id, sess)
 
         if session:
             _execute(session)
@@ -1565,9 +1549,9 @@ class QuotationService:
         modules = self.get_panel_modules_by_panel_id(panel_id)
         panel_total = 0.0
         for m_row in modules:
+            pm_id = m_row[0]
             m_qty = m_row[5]
-            mt_id = m_row[6]
-            m_items = self.get_module_items_by_module_type_id(mt_id)
+            m_items = self.get_module_items_by_panel_module_id(pm_id)
             total_items_amount = sum(float(item[6] or 0) for item in m_items)
             panel_total += float(m_qty or 0) * total_items_amount
         return panel_total

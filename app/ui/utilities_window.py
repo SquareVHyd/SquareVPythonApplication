@@ -2,12 +2,54 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QLabel, QPushButton, QHBoxLayout, QVBoxLayout, 
     QStackedWidget, QFrame
 )
+import os
+import sys
+import subprocess
 from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtCore import Qt
 from app.ui.Utilities.electricity_bill_page import ElectricityBillPage
 from app.ui.Utilities.zed_scorecard_page import ZEDScoreCardPage
 from app.ui.Utilities.timely_delivery_page import TimelyDeliveryPage
 
+from app.ui.Utilities.util_appstoor.app_suite.gst_calculator_qt import GstCalculatorWidget
+from app.ui.Utilities.util_appstoor.app_suite.busbar_calculator_qt import BusbarCalculatorWidget
+from app.ui.Utilities.util_appstoor.app_suite.business_calculator_qt import BusinessCalculatorWidget
+
+class AppSuitePage(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        
+        # Header layout
+        header_layout = QHBoxLayout()
+        self.btn_busbar = QPushButton("Busbar Calculator")
+        self.btn_business = QPushButton("Business Tools")
+        self.btn_gst = QPushButton("GST Calculator")
+        
+        header_layout.addWidget(self.btn_busbar)
+        header_layout.addWidget(self.btn_business)
+        header_layout.addWidget(self.btn_gst)
+        layout.addLayout(header_layout)
+        
+        # Stacked Widget for the apps
+        self.apps_stack = QStackedWidget()
+        
+        # Load the PySide6 versions of the apps
+        self.business_widget = BusinessCalculatorWidget()
+        self.busbar_widget = BusbarCalculatorWidget()
+        self.gst_widget = GstCalculatorWidget()
+        
+        self.apps_stack.addWidget(self.business_widget) # Index 0
+        self.apps_stack.addWidget(self.busbar_widget) # Index 1
+        self.apps_stack.addWidget(self.gst_widget) # Index 2
+        
+        layout.addWidget(self.apps_stack, 1)
+        
+        # Connect Header Buttons
+        self.btn_business.clicked.connect(lambda: self.apps_stack.setCurrentIndex(0))
+        self.btn_busbar.clicked.connect(lambda: self.apps_stack.setCurrentIndex(1))
+        self.btn_gst.clicked.connect(lambda: self.apps_stack.setCurrentIndex(2))
+        
 class UtilitiesWindow(QMainWindow):
     """A dedicated window for utility management tools with a sidebar layout similar to MainWindow."""
     
@@ -56,10 +98,25 @@ class UtilitiesWindow(QMainWindow):
         self.delivery_btn.clicked.connect(self.show_timely_delivery)
         self.delivery_btn.setToolTip(self.shortcuts_tip)
 
+        self.tally_reports_btn = QPushButton("📊 Tally Reports")
+        self.tally_reports_btn.clicked.connect(self.show_tally_reports)
+        self.tally_reports_btn.setToolTip("Launch Tally Analyzer Web App")
+
+        self.app_suite_btn = QPushButton("🛠️ App Suite")
+        self.app_suite_btn.clicked.connect(self.show_app_suite)
+        self.app_suite_btn.setToolTip("Launch utility applications suite")
+
+        self.ar_dashboard_btn = QPushButton("📈 AR Dashboard")
+        self.ar_dashboard_btn.clicked.connect(self.show_ar_dashboard)
+        self.ar_dashboard_btn.setToolTip("Generate AR Dashboard")
+
         sidebar_layout.addWidget(title)
         sidebar_layout.addWidget(self.eb_bill_btn)
         sidebar_layout.addWidget(self.zed_scorecard_btn)
         sidebar_layout.addWidget(self.delivery_btn)
+        sidebar_layout.addWidget(self.tally_reports_btn)
+        sidebar_layout.addWidget(self.app_suite_btn)
+        sidebar_layout.addWidget(self.ar_dashboard_btn)
         sidebar_layout.addStretch()
         
         # Close button to return to main ERP
@@ -81,11 +138,15 @@ class UtilitiesWindow(QMainWindow):
         self.eb_page = ElectricityBillPage()
         self.zed_page = ZEDScoreCardPage()
         self.delivery_page = TimelyDeliveryPage()
+        
+        # App Suite Page
+        self.app_suite_page = AppSuitePage()
 
         self.pages.addWidget(self.welcome_page)
         self.pages.addWidget(self.eb_page)
         self.pages.addWidget(self.zed_page)
         self.pages.addWidget(self.delivery_page)
+        self.pages.addWidget(self.app_suite_page)
 
         main_layout.addWidget(sidebar_frame)
         main_layout.addWidget(self.pages, 1)
@@ -113,3 +174,31 @@ class UtilitiesWindow(QMainWindow):
     def show_timely_delivery(self):
         """Navigates to the Timely Delivery management page."""
         self.pages.setCurrentIndex(3)
+
+    def show_tally_reports(self):
+        """Launches the Tally Analyzer app in the background directly."""
+        script_path = os.path.join(
+            os.path.dirname(__file__), 
+            "Utilities", "util_appstoor", "tally_analyzer", "app.py"
+        )
+        try:
+            # We use Popen without waiting, so it runs in background and opens browser
+            subprocess.Popen([sys.executable, script_path])
+        except Exception as e:
+            print(f"Error launching Tally Analyzer: {e}")
+            
+    def show_ar_dashboard(self):
+        """Launches the AR Dashboard generator in the background directly."""
+        script_path = os.path.join(
+            os.path.dirname(__file__), 
+            "Utilities", "util_appstoor", "ARFollowup", "generate_dashboard.py"
+        )
+        try:
+            # We use Popen without waiting, so it runs in background
+            subprocess.Popen([sys.executable, script_path])
+        except Exception as e:
+            print(f"Error launching AR Dashboard: {e}")
+        
+    def show_app_suite(self):
+        """Navigates to the App Suite page."""
+        self.pages.setCurrentIndex(4)

@@ -23,6 +23,7 @@ from app.ui.quotations.quotation_details_page import QuotationDetailsPage
 from app.ui.dashboard.dashboard_page import DashboardPage
 from app.ui.generic_spec.generic_spec_page import GenericSpecPage
 from app.ui.sld_analyzer.sld_page import SldPage
+from app.ui.po_process.po_process_details_page import POProcessDetailsPage
 
 
 class MainWindow(QMainWindow):
@@ -80,6 +81,7 @@ class MainWindow(QMainWindow):
         self.utilities_btn = QPushButton("🔧 Utilities")
         self.tools_btn = QPushButton("🛠️ Tools")
         self.master_btn = QPushButton("📋 Master Data")
+        self.po_process_btn = QPushButton("📑 PO Process")
 
         self.dashboard_btn.setToolTip(self.shortcuts_tip)
         self.customers_btn.setToolTip(self.shortcuts_tip)
@@ -100,6 +102,7 @@ class MainWindow(QMainWindow):
         self.utilities_btn.clicked.connect(self.show_utilities)
         self.tools_btn.clicked.connect(self.show_tools)
         self.master_btn.clicked.connect(self.show_master)
+        self.po_process_btn.clicked.connect(self.show_po_process)
 
         self.help_btn = QPushButton("❓ Help")
         self.help_btn.setToolTip(self.shortcuts_tip)
@@ -114,6 +117,7 @@ class MainWindow(QMainWindow):
             self.dashboard_btn,
             self.customers_btn,
             self.quotation_details_btn,
+            self.po_process_btn,
             self.pricelist_btn,
             self.generic_spec_btn,
             self.modules_btn,
@@ -143,6 +147,9 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(MasterDataPage())
         self.pages.addWidget(QuotationDetailsPage(self)) # Index 6
         self.pages.addWidget(GenericSpecPage()) # Index 7
+        
+        self.po_process_page_instance = POProcessDetailsPage(self)
+        self.pages.addWidget(self.po_process_page_instance) # Index 8
 
         self.shortcut_help = QShortcut(QKeySequence("F1"), self)
         self.shortcut_help.activated.connect(self.show_shortcuts)
@@ -242,6 +249,10 @@ class MainWindow(QMainWindow):
         if hasattr(page, 'refresh_all'):
             page.refresh_all()
         UIStateManager.save_current_page(7)
+
+    def show_po_process(self):
+        self.pages.setCurrentWidget(self.po_process_page_instance)
+        UIStateManager.save_current_page(8)
 
     def show_modules(self):
         self.pages.setCurrentIndex(3)

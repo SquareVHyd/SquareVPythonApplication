@@ -129,9 +129,11 @@ class GenericSpecPage(QWidget):
         self.generic_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.generic_table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.generic_table.setSortingEnabled(True)
-        self.generic_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self.generic_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.generic_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.generic_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Interactive)
+        self.generic_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Interactive)
+        self.generic_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Interactive)
+        self.generic_table.horizontalHeader().setSectionsMovable(True)
+        self.generic_table.horizontalHeader().setStretchLastSection(True)
         self.generic_table.horizontalHeader().setMinimumHeight(30)
         self.generic_table.itemSelectionChanged.connect(self.on_generic_selection_changed)
         self.generic_table.itemChanged.connect(self.handle_generic_item_changed)
@@ -223,19 +225,11 @@ class GenericSpecPage(QWidget):
         self.price_table.setSortingEnabled(True)
         self.price_table.itemChanged.connect(self.handle_price_checkbox_changed)
         
-        # Set resize modes for all columns
-        self.price_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents) # Checkbox
-        self.price_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents) # ID
-        self.price_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch) # Description
-        self.price_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents) # Model
-        self.price_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents) # Category
-        self.price_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents) # Make
-        self.price_table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeToContents) # List Price
-        self.price_table.horizontalHeader().setSectionResizeMode(7, QHeaderView.ResizeToContents) # Discount %
-        self.price_table.horizontalHeader().setSectionResizeMode(8, QHeaderView.ResizeToContents) # Net Price
-        self.price_table.horizontalHeader().setSectionResizeMode(9, QHeaderView.ResizeToContents) # Used Qty
-        self.price_table.horizontalHeader().setSectionResizeMode(10, QHeaderView.ResizeToContents) # Total Amount
-        self.price_table.horizontalHeader().setSectionResizeMode(11, QHeaderView.ResizeToContents) # GenericSpecItemID
+        # Set resize modes for all columns to allow manual resizing and moving
+        for i in range(12):
+            self.price_table.horizontalHeader().setSectionResizeMode(i, QHeaderView.Interactive)
+        self.price_table.horizontalHeader().setSectionsMovable(True)
+        self.price_table.horizontalHeader().setStretchLastSection(True)
         self.price_table.horizontalHeader().setMinimumHeight(30)
         
         # Do not hide columns List Price(6), Discount %(7), Net Price(8), Used Qty(9), Total Amount(10)

@@ -137,11 +137,11 @@ class ModuleItemsViewerDialog(QWidget):
                     # Single Module Logic
                     selected_pm = next((pm for pm in self._panel_modules_lookup if pm[0] == pm_id), None)
                     if not selected_pm: return [], 1, 1, "", 0
-                    module_type_id, pnl_qty, mod_qty = selected_pm[6], int(selected_pm[3] or 1), int(selected_pm[5] or 1)
+                    pnl_qty, mod_qty = int(selected_pm[3] or 1), int(selected_pm[5] or 1)
                     pnl_name = self.panel_combo.currentText().split(" (Qty:")[0]
-                    sql = text("""SELECT mi."ID", mi."DriveDescription", mi."BOM", mi."LP", mi."%Discount", pl."Make", pl."Model" FROM public."tbl_ModuleItems" mi LEFT JOIN public."vwPriceList" pl ON mi."DriveDescription" = pl."ItemDescription" WHERE mi."ID" = :mt_id""")
-                    rows = session.execute(sql, {"mt_id": module_type_id}).fetchall()
-                    return rows, pnl_qty, mod_qty, pnl_name, module_type_id
+                    sql = text("""SELECT mi."ID", mi."DriveDescription", mi."BOM", mi."LP", mi."%Discount", pl."Make", pl."Model" FROM public."tbl_ModuleItems" mi LEFT JOIN public."vwPriceList" pl ON mi."DriveDescription" = pl."ItemDescription" WHERE mi."ID" = :pm_id""")
+                    rows = session.execute(sql, {"pm_id": pm_id}).fetchall()
+                    return rows, pnl_qty, mod_qty, pnl_name, pm_id
                 else:
                     # Aggregated Summary Logic (Combine items across all modules in quote or panel)
                     where_clause = 'p."QuoteID" = :tid' if panel_id is None else 'p."ID" = :tid'
@@ -163,7 +163,7 @@ class ModuleItemsViewerDialog(QWidget):
                             MAX(pl."Model") as "Model"
                         FROM public."tbl_Panels" p
                         JOIN public."tbl_PanelModules" pm ON p."ID" = pm."PanelID"
-                        JOIN public."tbl_ModuleItems" mi ON pm."ModuleTypeID" = mi."ID"
+                        JOIN public."tbl_ModuleItems" mi ON pm."ID" = mi."ID"
                         LEFT JOIN public."vwPriceList" pl ON mi."DriveDescription" = pl."ItemDescription"
                         WHERE {where_clause}
                         GROUP BY mi."DriveDescription"
@@ -176,12 +176,13 @@ class ModuleItemsViewerDialog(QWidget):
         self._worker.result.connect(self._items_loaded); self._worker.error.connect(self._on_load_error); self._worker.start()
 
     def _items_loaded(self, result):
-        rows, pnl_qty, mod_qty, pnl_name, mt_id_for_status = result
-        is_summary = (mt_id_for_status == 0)
-        self.table.blockSignals(True); self._cache = []; self.table.setSortingEnabled(False); self.table.setRowCount(len(rows))
+        rows, pnl_qty, mod_qty, pnl_name, pm_id_for_status = result
+        is_summary = (pm_id_for_status == 0)
+        self.table.blockSignals(True); self._cache = []; self.table.setSortingEnabled(False)
+        self.table.clearContents(); self.table.setRowCount(0); self.table.setRowCount(len(rows))
         self.table.setColumnHidden(0, is_summary)
         for r, row in enumerate(rows):
-            mt_id, desc, bom, lp, disc, make, model = row
+            pm_id_row, desc, bom, lp, disc, make, model = row
             bom_val = float(bom) if (bom is not None and float(bom) != 0) else float(mod_qty)
             if not is_summary:
                 # If not summary, the query gives us item BOM but we need to account for mod_qty if it's default 0/null
@@ -193,18 +194,18 @@ class ModuleItemsViewerDialog(QWidget):
             lp_val, disc_val = float(lp or 0), float(disc or 0)
             total_amount = bom_val * lp_val * (1 - disc_val)
             
-            data = [mt_id, desc, str(make or ""), bom_val, lp_val, f"{disc_val*100:.2f}%", f"₹{total_amount:,.2f}"]
+            data = [pm_id_row, desc, str(make or ""), bom_val, lp_val, f"{disc_val*100:.2f}%", f"₹{total_amount:,.2f}"]
             self._cache.append(row)
             for c, val in enumerate(data):
                 item = NumericTableWidgetItem(str(val))
                 if (not is_summary and c in {3, 4, 5}) or (is_summary and c in {4, 5}): 
                     item.setFlags(item.flags() | Qt.ItemIsEditable)
                 else: item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                if c == 0: item.setData(Qt.UserRole, (mt_id, desc))
+                if c == 0: item.setData(Qt.UserRole, (pm_id_row, desc))
                 self.table.setItem(r, c, item)
-        self.table.setSortingEnabled(True); self.table.resizeColumnsToContents(); self.table.blockSignals(False)
         self._update_summary_labels()
-        msg = f"Loaded {len(rows)} unique items (Summary view)" if is_summary else f"Loaded {len(rows)} items for module type ID: {mt_id_for_status}"
+        self.table.setSortingEnabled(True); self.table.resizeColumnsToContents(); self.table.blockSignals(False)
+        msg = f"Loaded {len(rows)} unique items (Summary view)" if is_summary else f"Loaded {len(rows)} items for panel module ID: {pm_id_for_status}"
         self.status_bar.showMessage(msg)
         self._worker = None
 
@@ -212,6 +213,11 @@ class ModuleItemsViewerDialog(QWidget):
         sum_lp = 0.0
         sum_total = 0.0
         
+        self.table.blockSignals(True)
+        was_sorting = self.table.isSortingEnabled()
+        if was_sorting:
+            self.table.setSortingEnabled(False)
+            
         def safe_num(text, default=0.0):
             try: return float(text.replace('₹', '').replace(',', '').replace('%', '').strip() or default)
             except: return default
@@ -227,8 +233,10 @@ class ModuleItemsViewerDialog(QWidget):
             sum_lp += row_lp
             sum_total += row_total
             
-            # Optionally update the total amount column if it was triggered by a change
             self.table.item(r, 6).setText(f"₹{row_total:,.2f}")
+
+        if was_sorting:
+            self.table.setSortingEnabled(True)
 
         overall_disc = ((sum_lp - sum_total) / sum_lp * 100) if sum_lp > 0 else 0.0
         self.summary_lbl.setText(
@@ -236,6 +244,7 @@ class ModuleItemsViewerDialog(QWidget):
             f"Total List Price: ₹{sum_lp:,.2f}  |  "
             f"Total Price: ₹{sum_total:,.2f}"
         )
+        self.table.blockSignals(False)
 
     def _handle_item_changed(self, item):
         col = item.column()
@@ -263,7 +272,7 @@ class ModuleItemsViewerDialog(QWidget):
                     SET "LP" = :lp, "%Discount" = :disc
                     WHERE "DriveDescription" = :desc
                     AND "ID" IN (
-                        SELECT pm."ModuleTypeID"
+                        SELECT pm."ID"
                         FROM public."tbl_PanelModules" pm
                         JOIN public."tbl_Panels" p ON pm."PanelID" = p."ID"
                         WHERE {where_clause}
@@ -278,9 +287,10 @@ class ModuleItemsViewerDialog(QWidget):
                     })
                     session.commit()
             else:
-                self.service.update_module_item(pk_data[0], pk_data[1], pk_data[0], pk_data[1], bom, lp, disc)
+                self.service.update_module_item(pm_id, desc, bom, lp, disc)
                 
-            self._update_summary_labels()
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, self._update_summary_labels)
         except Exception as e: print(f"Error during inline update: {e}")
         finally: self.table.blockSignals(False)
 
@@ -288,8 +298,7 @@ class ModuleItemsViewerDialog(QWidget):
         pm_id = self.module_combo.currentData()
         selected_pm = next((pm for pm in self._panel_modules_lookup if pm[0] == pm_id), None)
         if not selected_pm: return
-        # selected_pm[6] is the ModuleTypeID (from tbl_PnlModuleType)
-        dialog = SelectModuleItemsDialog(target_mt_id=selected_pm[6], parent=self)
+        dialog = SelectModuleItemsDialog(target_pm_id=pm_id, parent=self)
         if dialog.exec() == QDialog.Accepted:
             self._load_items_async()
 
@@ -299,7 +308,7 @@ class ModuleItemsViewerDialog(QWidget):
         if not selected_pm: return
         # Extract PanelModQty from index 5 of the selected panel module lookup data
         mod_qty = float(selected_pm[5] or 1.0)
-        dialog = ModuleItemForm(selected_pm[6], module_item_data={"bom": mod_qty}, parent=self)
+        dialog = ModuleItemForm(pm_id, module_item_data={"bom": mod_qty}, parent=self)
         if dialog.exec() == QDialog.Accepted:
             data = dialog.get_data()
             if data:
@@ -352,7 +361,7 @@ class ModuleItemsViewerDialog(QWidget):
         pk_data = self.table.item(row, 0).data(Qt.UserRole)
         if not pk_data: return
         
-        mt_id, old_desc = pk_data
+        pm_id, old_desc = pk_data
         
         # Prepare data for ModuleItemForm
         def safe_num(text, default=1.0):
@@ -360,7 +369,7 @@ class ModuleItemsViewerDialog(QWidget):
             except: return default
 
         current_data = {
-            "module_type_id": mt_id,
+            "module_type_id": pm_id,
             "drive_description": old_desc,
             "bom": safe_num(self.table.item(row, 3).text(), 1.0),
             "lp": safe_num(self.table.item(row, 4).text(), 0.0),
@@ -368,7 +377,7 @@ class ModuleItemsViewerDialog(QWidget):
             "sequence_number": row + 1
         }
         
-        dialog = ModuleItemForm(mt_id, module_item_data=current_data, parent=self)
+        dialog = ModuleItemForm(pm_id, module_item_data=current_data, parent=self)
         dialog.setWindowTitle("Replace Item Across Quotation")
         if dialog.exec() == QDialog.Accepted:
             data = dialog.get_data()

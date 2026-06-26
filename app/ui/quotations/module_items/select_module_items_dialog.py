@@ -7,11 +7,11 @@ from app.services.quotation_service import QuotationService
 from app.ui.searchable_table import SearchableTable, NumericTableWidgetItem
 
 class SelectModuleItemsDialog(QDialog):
-    def __init__(self, target_mt_id, parent=None):
+    def __init__(self, target_pm_id, parent=None):
         super().__init__(parent)
         self.service = QuotationService()
         self.setWindowTitle("Select Module Items")
-        self.target_mt_id = target_mt_id
+        self.target_pm_id = target_pm_id
         self.resize(1000, 600)
         self.setup_ui()
         self._load_makes()
@@ -93,6 +93,6 @@ class SelectModuleItemsDialog(QDialog):
 
     def _process_bulk(self, items):
         if not items: return
-        added, skipped = self.service.bulk_add_module_items_from_vw(items, self.target_mt_id)
+        added, skipped = self.service.bulk_add_module_items_from_vw(items, self.target_pm_id)
         QMessageBox.information(self, "Success", f"{added} items added successfully.\n{skipped} items skipped because they already exist.")
         self.accept()

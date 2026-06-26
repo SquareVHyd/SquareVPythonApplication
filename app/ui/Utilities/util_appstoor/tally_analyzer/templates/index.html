@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tally DayBook Analyzer & Visualizer</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js for trends -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Header -->
+        <header>
+            <div class="header-top">
+                <div class="brand">
+                    <i class="fa-solid fa-chart-line brand-icon"></i>
+                    <div class="brand-title">
+                        <h1>Tally DayBook Analyzer</h1>
+                        <p>Enterprise Financial Trend Dashboard</p>
+                    </div>
+                </div>
+                
+                <div class="db-status">
+                    <div class="status-item">
+                        <div id="db-status-dot" class="status-dot stale"></div>
+                        <span id="db-status-text">SQLite: Disconnected</span>
+                    </div>
+                    <div class="status-item">
+                        <i class="fa-solid fa-database text-secondary"></i>
+                        <span id="db-records-count">0 Records</span>
+                    </div>
+                    <div class="status-item">
+                        <i class="fa-solid fa-clock text-secondary"></i>
+                        <span id="db-last-refresh">Last Sync: Never</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="file-picker-panel">
+                <span class="file-label">Source File:</span>
+                <div id="file-path-display" class="file-path-display">No excel file selected. Click Browse to select.</div>
+                <button id="btn-browse" class="btn btn-secondary">
+                    <i class="fa-regular fa-folder-open"></i> Browse...
+                </button>
+                <button id="btn-refresh" class="btn btn-primary" disabled>
+                    <i class="fa-solid fa-sync"></i> Refresh Data
+                </button>
+            </div>
+        </header>
+
+        <!-- KPI Cards Grid -->
+        <div class="stats-grid">
+            <div class="stat-card stat-sales">
+                <div class="stat-info">
+                    <span class="stat-label">Total Sales</span>
+                    <span id="stat-sales-val" class="stat-value">₹0.00</span>
+                </div>
+                <div class="stat-icon"><i class="fa-solid fa-arrow-trend-up"></i></div>
+            </div>
+            <div class="stat-card stat-purchases">
+                <div class="stat-info">
+                    <span class="stat-label">Total Purchases</span>
+                    <span id="stat-purchases-val" class="stat-value">₹0.00</span>
+                </div>
+                <div class="stat-icon"><i class="fa-solid fa-arrow-trend-down"></i></div>
+            </div>
+            <div class="stat-card stat-receipts">
+                <div class="stat-info">
+                    <span class="stat-label">Total Receipts</span>
+                    <span id="stat-receipts-val" class="stat-value">₹0.00</span>
+                </div>
+                <div class="stat-icon"><i class="fa-solid fa-hand-holding-dollar"></i></div>
+            </div>
+            <div class="stat-card stat-payments">
+                <div class="stat-info">
+                    <span class="stat-label">Total Payments</span>
+                    <span id="stat-payments-val" class="stat-value">₹0.00</span>
+                </div>
+                <div class="stat-icon"><i class="fa-solid fa-file-invoice-dollar"></i></div>
+            </div>
+        </div>
+
+        <!-- Charts Section -->
+        <div class="charts-grid">
+            <!-- 1. Cashflow Trends (Sales vs Purchases) -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <div class="chart-title">
+                        <h2>Sales vs Purchases Trend</h2>
+                    </div>
+                </div>
+                <div class="chart-body">
+                    <canvas id="salesPurchaseChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 2. Receipts vs Payments Trends -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <div class="chart-title">
+                        <h2>Receipts vs Payments Trend</h2>
+                    </div>
+                </div>
+                <div class="chart-body">
+                    <canvas id="receiptPaymentChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 3. Dynamic Particular (Ledger) Trend -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <div class="chart-title">
+                        <h2>Ledger Parameter Trend</h2>
+                    </div>
+                    <div class="chart-controls">
+                        <select id="select-particular" class="selector">
+                            <option value="">-- Select Particular --</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="chart-body">
+                    <canvas id="particularTrendChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 4. Dynamic Voucher Type Trend -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <div class="chart-title">
+                        <h2>Voucher Type Parameter Trend</h2>
+                    </div>
+                    <div class="chart-controls">
+                        <select id="select-voucher-type" class="selector">
+                            <option value="">All Voucher Types</option>
+                            <option value="Contra">Contra</option>
+                            <option value="Sales">Sales</option>
+                            <option value="Receipt">Receipt</option>
+                            <option value="Payment">Payment</option>
+                            <option value="Debit Note">Debit Note</option>
+                            <option value="Credit Note">Credit Note</option>
+                            <option value="Journal">Journal</option>
+                            <option value="Purchase">Purchase</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="chart-body">
+                    <canvas id="voucherTypeTrendChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Table Panel -->
+        <div class="table-panel">
+            <div class="table-controls">
+                <div class="search-container">
+                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                    <input type="text" id="table-search" class="search-input" placeholder="Search by Particular or Voucher No...">
+                </div>
+                <div class="table-filters">
+                    <select id="filter-voucher-type" class="selector">
+                        <option value="">All Voucher Types</option>
+                        <option value="Contra">Contra</option>
+                        <option value="Sales">Sales</option>
+                        <option value="Receipt">Receipt</option>
+                        <option value="Payment">Payment</option>
+                        <option value="Debit Note">Debit Note</option>
+                        <option value="Credit Note">Credit Note</option>
+                        <option value="Journal">Journal</option>
+                        <option value="Purchase">Purchase</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Particular</th>
+                            <th>Voucher No</th>
+                            <th>Voucher Type</th>
+                            <th style="text-align: right;">Amount (₹)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body">
+                        <tr>
+                            <td colspan="5" style="text-align: center; color: var(--text-secondary); padding: 2rem;">
+                                No data loaded. Click Refresh to load data from the Excel file.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="table-footer">
+                <span id="table-stats">Showing 0 to 0 of 0 entries</span>
+                <div class="pagination-controls">
+                    <button id="btn-prev" class="btn-pagination" disabled><i class="fa-solid fa-chevron-left"></i> Previous</button>
+                    <span id="page-num">Page 1 of 1</span>
+                    <button id="btn-next" class="btn-pagination" disabled>Next <i class="fa-solid fa-chevron-right"></i></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="/static/main.js"></script>
+</body>
+</html>

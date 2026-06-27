@@ -1,7 +1,8 @@
 from PySide6.QtWidgets import (
     QWidget, QLabel, QPushButton, QHBoxLayout, QVBoxLayout,
-    QStackedWidget, QFrame, QSplitter, QMessageBox
+    QStackedWidget, QFrame, QSplitter, QMessageBox, QButtonGroup
 )
+from app.ui.components.menu_button import MenuButton
 from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtCore import Qt
 from app.ui.quotations.quotation_page import QuotationPage
@@ -54,39 +55,44 @@ class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
             "Ctrl+P - Export PDF"
         )
 
-        self.quotations_btn = QPushButton("📄 Quotations List")
+        self.btn_group = QButtonGroup(self)
+        self.btn_group.setExclusive(True)
+
+        self.quotations_btn = MenuButton("📄 Quotations List")
         self.quotations_btn.clicked.connect(self.show_quotations)
         self.quotations_btn.setToolTip(self.shortcuts_tip)
 
-        self.preview_btn = QPushButton("📑 Quotation Process")
+        self.preview_btn = MenuButton("📑 Quotation Process")
         self.preview_btn.clicked.connect(self.show_preview)
         self.preview_btn.setToolTip("View and Manage the entire quotation hierarchy")
         self.preview_btn.setEnabled(False)
 
-        self.cost_summary_btn = QPushButton("📊 Cost Summary")
+        self.cost_summary_btn = MenuButton("📊 Cost Summary")
         self.cost_summary_btn.clicked.connect(self.show_cost_summary)
         self.cost_summary_btn.setToolTip("View the aggregated cost breakdown for this quotation")
         self.cost_summary_btn.setEnabled(False)
 
-        self.cost_summary_btn.setEnabled(False)
-
-
-
-
-        self.panels_btn = QPushButton("🔌 Panels")
+        self.panels_btn = MenuButton("🔌 Panels")
         self.panels_btn.clicked.connect(self.show_panels)
         self.panels_btn.setToolTip("Manage panels for the selected quotation")
         self.panels_btn.setEnabled(False)
 
-        self.panel_modules_btn = QPushButton("📦 Panel Modules")
+        self.panel_modules_btn = MenuButton("📦 Panel Modules")
         self.panel_modules_btn.clicked.connect(self.show_panel_modules)
         self.panel_modules_btn.setToolTip("Manage modules for all panels in this quotation")
         self.panel_modules_btn.setEnabled(False)
 
-        self.items_btn = QPushButton("📦 Used Quantity")
+        self.items_btn = MenuButton("📦 Used Quantity")
         self.items_btn.clicked.connect(self.show_items)
         self.items_btn.setToolTip("View all module items for the selected quotation")
         self.items_btn.setEnabled(False)
+        
+        self.btn_group.addButton(self.quotations_btn)
+        self.btn_group.addButton(self.preview_btn)
+        self.btn_group.addButton(self.cost_summary_btn)
+        self.btn_group.addButton(self.panels_btn)
+        self.btn_group.addButton(self.panel_modules_btn)
+        self.btn_group.addButton(self.items_btn)
 
         sidebar_layout.addWidget(title)
         sidebar_layout.addWidget(self.quotations_btn)
@@ -98,7 +104,7 @@ class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
         sidebar_layout.addStretch()
 
         # Close button to return to main ERP (now switches back to dashboard)
-        self.close_btn = QPushButton("↩️ Back to ERP")
+        self.close_btn = MenuButton("↩️ Back to ERP")
         self.close_btn.clicked.connect(self._back_to_erp)
         sidebar_layout.addWidget(self.close_btn)
 
@@ -141,8 +147,8 @@ class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
 
         # Apply consistent styling matching MainWindow
         self.setStyleSheet(
-            "#sidebar { background-color: #f0f2f5; } "
-            "#appTitle { font-size: 20px; font-weight: bold; margin-bottom: 16px; }"
+            "#sidebar { background-color: #f8fafc; } "
+            "#appTitle { font-size: 20px; font-weight: bold; margin-bottom: 16px; padding-left: 10px; }"
             "QHeaderView::section { background-color: #fce4ec; border: 1px solid #e2e8f0; padding: 4px; font-weight: bold; }"
         )
 
@@ -156,6 +162,7 @@ class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
 
     def show_quotations(self):
         self.pages.setCurrentIndex(1)
+        self.quotations_btn.setChecked(True)
 
     def show_panels(self):
         selected = self.quotation_page.table.selectionModel().selectedRows()
@@ -170,6 +177,7 @@ class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
     def open_panel_view(self, quote_id, project_name):
         self.panel_page.load_quotation(quote_id, project_name)
         self.pages.setCurrentWidget(self.panel_page)
+        self.panels_btn.setChecked(True)
 
     def show_panel_modules(self):
         selected = self.quotation_page.table.selectionModel().selectedRows()
@@ -179,6 +187,7 @@ class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
             project_name = self.quotation_page.table.item(row, 7).text()
             self.panel_module_page.load_quotation(quote_id, project_name)
             self.pages.setCurrentWidget(self.panel_module_page)
+            self.panel_modules_btn.setChecked(True)
         else:
             self.panel_module_page.clear_page()
             self.show_quotations()
@@ -218,6 +227,7 @@ class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
             quote_id = int(self.quotation_page.table.item(row, 0).text())
             self.module_items_viewer_page.load_viewer(quote_id, initial_panel_id, initial_pm_id)
             self.pages.setCurrentWidget(self.module_items_viewer_page)
+            self.items_btn.setChecked(True)
         else:
             self.show_quotations()
 
@@ -230,6 +240,7 @@ class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
             project_name = self.quotation_page.table.item(row, 7).text()
             self.preview_page.load_quotation(quote_id, project_name)
             self.pages.setCurrentWidget(self.preview_page)
+            self.preview_btn.setChecked(True)
         else:
             QMessageBox.warning(self, "Selection Required", "Please select a quotation to preview.")
 
@@ -241,5 +252,6 @@ class QuotationDetailsPage(QWidget): # Changed from QMainWindow to QWidget
             project_name = self.quotation_page.table.item(row, 7).text()
             self.cost_summary_page.load_quotation(quote_id, project_name)
             self.pages.setCurrentWidget(self.cost_summary_page)
+            self.cost_summary_btn.setChecked(True)
         else:
             QMessageBox.warning(self, "Selection Required", "Please select a quotation first.")

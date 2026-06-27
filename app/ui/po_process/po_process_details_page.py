@@ -1,7 +1,8 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QFrame, QPushButton, 
-    QLabel, QStackedWidget, QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox
+    QLabel, QStackedWidget, QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox, QButtonGroup
 )
+from app.ui.components.menu_button import MenuButton
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QShortcut, QKeySequence
 
@@ -10,6 +11,9 @@ from app.ui.quotations.reports.test_reports_page import TestReportsPage
 from app.ui.quotations.reports.po_generator_page import PoGeneratorPage
 from app.ui.sld_analyzer.sld_page import SldPage
 from app.ui.po_process.po_customer_page import POCustomerPage
+from app.ui.po_process.minutes_of_meeting_page import MinutesOfMeetingPage
+from app.ui.po_process.complaints_page import ComplaintsPage
+from app.ui.po_process.contract_bills_page import ContractBillsPage
 
 class POProcessQuotationPage(QWidget):
     """Simplified quotation table specifically for selecting a quote in PO Process."""
@@ -112,25 +116,49 @@ class POProcessDetailsPage(QWidget):
         title = QLabel("PO Process")
         title.setObjectName("appTitle")
 
-        self.quotations_btn = QPushButton("📄 Quotations List")
+        self.btn_group = QButtonGroup(self)
+        self.btn_group.setExclusive(True)
+
+        self.quotations_btn = MenuButton("📄 Quotations List")
         self.quotations_btn.clicked.connect(self.show_quotations)
 
-        self.test_reports_btn = QPushButton("📄 Test Reports")
+        self.test_reports_btn = MenuButton("📄 Test Reports")
         self.test_reports_btn.clicked.connect(self.show_test_reports)
         self.test_reports_btn.setEnabled(False)
 
-        self.po_sales_person_btn = QPushButton("📄 Supplier_POs")
+        self.po_sales_person_btn = MenuButton("📄 Supplier_POs")
         self.po_sales_person_btn.clicked.connect(self.show_po_sales_person)
         self.po_sales_person_btn.setEnabled(False)
 
-        self.sld_analyzer_btn = QPushButton("📏 SLD Analyzer")
+        self.sld_analyzer_btn = MenuButton("📏 SLD Analyzer")
         self.sld_analyzer_btn.clicked.connect(self.show_sld_analyzer)
         self.sld_analyzer_btn.setToolTip("View General Arrangement diagrams for this quotation")
         self.sld_analyzer_btn.setEnabled(False)
 
-        self.po_customers_btn = QPushButton("📄 PO_Customers")
+        self.po_customers_btn = MenuButton("📄 PO_Customers")
         self.po_customers_btn.clicked.connect(self.show_po_customers)
         self.po_customers_btn.setEnabled(False)
+
+        self.min_of_meeting_btn = MenuButton("📄 Minutes of Meeting")
+        self.min_of_meeting_btn.clicked.connect(self.show_minutes_of_meeting)
+        self.min_of_meeting_btn.setEnabled(False)
+
+        self.complaints_btn = MenuButton("📄 Complaints")
+        self.complaints_btn.clicked.connect(self.show_complaints)
+        self.complaints_btn.setEnabled(False)
+
+        self.contract_bills_btn = MenuButton("🧾 Contract Bills")
+        self.contract_bills_btn.clicked.connect(self.show_contract_bills)
+        self.contract_bills_btn.setEnabled(False)
+        
+        self.btn_group.addButton(self.quotations_btn)
+        self.btn_group.addButton(self.test_reports_btn)
+        self.btn_group.addButton(self.po_sales_person_btn)
+        self.btn_group.addButton(self.sld_analyzer_btn)
+        self.btn_group.addButton(self.po_customers_btn)
+        self.btn_group.addButton(self.min_of_meeting_btn)
+        self.btn_group.addButton(self.complaints_btn)
+        self.btn_group.addButton(self.contract_bills_btn)
 
         sidebar_layout.addWidget(title)
         sidebar_layout.addWidget(self.quotations_btn)
@@ -138,9 +166,12 @@ class POProcessDetailsPage(QWidget):
         sidebar_layout.addWidget(self.po_sales_person_btn)
         sidebar_layout.addWidget(self.sld_analyzer_btn)
         sidebar_layout.addWidget(self.po_customers_btn)
+        sidebar_layout.addWidget(self.min_of_meeting_btn)
+        sidebar_layout.addWidget(self.complaints_btn)
+        sidebar_layout.addWidget(self.contract_bills_btn)
         sidebar_layout.addStretch()
 
-        self.close_btn = QPushButton("↩️ Back to ERP")
+        self.close_btn = MenuButton("↩️ Back to ERP")
         self.close_btn.clicked.connect(self._back_to_erp)
         sidebar_layout.addWidget(self.close_btn)
 
@@ -156,6 +187,9 @@ class POProcessDetailsPage(QWidget):
         self.po_generator_page = PoGeneratorPage(self)
         self.sld_page = SldPage(self)
         self.po_customer_page = POCustomerPage(self)
+        self.min_of_meeting_page = MinutesOfMeetingPage(self)
+        self.complaints_page = ComplaintsPage(self)
+        self.contract_bills_page = ContractBillsPage(self)
 
         self.pages.addWidget(self.welcome_page)
         self.pages.addWidget(self.quotation_page)
@@ -163,6 +197,9 @@ class POProcessDetailsPage(QWidget):
         self.pages.addWidget(self.po_generator_page)
         self.pages.addWidget(self.sld_page)
         self.pages.addWidget(self.po_customer_page)
+        self.pages.addWidget(self.min_of_meeting_page)
+        self.pages.addWidget(self.complaints_page)
+        self.pages.addWidget(self.contract_bills_page)
 
         self.splitter.addWidget(sidebar_frame)
         self.splitter.addWidget(self.pages)
@@ -171,13 +208,15 @@ class POProcessDetailsPage(QWidget):
         self.layout.addWidget(self.splitter)
 
         self.setStyleSheet(
-            "#sidebar { background-color: #f0f2f5; } "
-            "#appTitle { font-size: 20px; font-weight: bold; margin-bottom: 16px; }"
+            "#sidebar { background-color: #f8fafc; } "
+            "#appTitle { font-size: 20px; font-weight: bold; margin-bottom: 16px; padding-left: 10px; }"
             "QHeaderView::section { background-color: #fce4ec; border: 1px solid #e2e8f0; padding: 4px; font-weight: bold; }"
         )
 
         self.esc_shortcut = QShortcut(QKeySequence("Esc"), self)
         self.esc_shortcut.activated.connect(self._back_to_erp)
+        
+        self.show_quotations()
 
     def _back_to_erp(self):
         if self.parent_main_window:
@@ -188,9 +227,13 @@ class POProcessDetailsPage(QWidget):
         self.po_sales_person_btn.setEnabled(enabled)
         self.sld_analyzer_btn.setEnabled(enabled)
         self.po_customers_btn.setEnabled(enabled)
+        self.min_of_meeting_btn.setEnabled(enabled)
+        self.complaints_btn.setEnabled(enabled)
+        self.contract_bills_btn.setEnabled(enabled)
 
     def show_quotations(self):
         self.pages.setCurrentWidget(self.quotation_page)
+        self.quotations_btn.setChecked(True)
 
     def show_test_reports(self):
         selected = self.quotation_page.table.selectionModel().selectedRows()
@@ -200,6 +243,7 @@ class POProcessDetailsPage(QWidget):
             project_name = self.quotation_page.table.item(row, 7).text()
             self.test_reports_page.load_quotation(quote_id, project_name)
             self.pages.setCurrentWidget(self.test_reports_page)
+            self.test_reports_btn.setChecked(True)
         else:
             QMessageBox.warning(self, "Selection Required", "Please select a quotation first.")
 
@@ -210,6 +254,7 @@ class POProcessDetailsPage(QWidget):
             quote_id = int(self.quotation_page.table.item(row, 0).text())
             self.po_generator_page.load_quotation(quote_id)
             self.pages.setCurrentWidget(self.po_generator_page)
+            self.po_sales_person_btn.setChecked(True)
         else:
             QMessageBox.warning(self, "Selection Required", "Please select a quotation first.")
 
@@ -220,6 +265,7 @@ class POProcessDetailsPage(QWidget):
             quote_id = int(self.quotation_page.table.item(row, 0).text())
             self.sld_page.load_quotation(quote_id)
             self.pages.setCurrentWidget(self.sld_page)
+            self.sld_analyzer_btn.setChecked(True)
         else:
             QMessageBox.warning(self, "Selection Required", "Please select a quotation first.")
 
@@ -231,5 +277,40 @@ class POProcessDetailsPage(QWidget):
             project_name = self.quotation_page.table.item(row, 7).text()
             self.po_customer_page.load_quotation(quote_id, project_name)
             self.pages.setCurrentWidget(self.po_customer_page)
+            self.po_customers_btn.setChecked(True)
+        else:
+            QMessageBox.warning(self, "Selection Required", "Please select a quotation first.")
+
+    def show_minutes_of_meeting(self):
+        selected = self.quotation_page.table.selectionModel().selectedRows()
+        if selected:
+            row = selected[0].row()
+            quote_id = int(self.quotation_page.table.item(row, 0).text())
+            self.min_of_meeting_page.load_quotation(quote_id)
+            self.pages.setCurrentWidget(self.min_of_meeting_page)
+            self.min_of_meeting_btn.setChecked(True)
+        else:
+            QMessageBox.warning(self, "Selection Required", "Please select a quotation first.")
+
+    def show_complaints(self):
+        selected = self.quotation_page.table.selectionModel().selectedRows()
+        if selected:
+            row = selected[0].row()
+            quote_id = int(self.quotation_page.table.item(row, 0).text())
+            self.complaints_page.load_quotation(quote_id)
+            self.pages.setCurrentWidget(self.complaints_page)
+            self.complaints_btn.setChecked(True)
+        else:
+            QMessageBox.warning(self, "Selection Required", "Please select a quotation first.")
+
+    def show_contract_bills(self):
+        selected = self.quotation_page.table.selectionModel().selectedRows()
+        if selected:
+            row = selected[0].row()
+            quote_id = int(self.quotation_page.table.item(row, 0).text())
+            project_name = self.quotation_page.table.item(row, 7).text()
+            self.contract_bills_page.load_quotation(quote_id, project_name)
+            self.pages.setCurrentWidget(self.contract_bills_page)
+            self.contract_bills_btn.setChecked(True)
         else:
             QMessageBox.warning(self, "Selection Required", "Please select a quotation first.")

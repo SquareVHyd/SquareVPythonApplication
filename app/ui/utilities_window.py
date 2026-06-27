@@ -1,7 +1,8 @@
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QLabel, QPushButton, QHBoxLayout, QVBoxLayout, 
-    QStackedWidget, QFrame
+    QStackedWidget, QFrame, QButtonGroup
 )
+from app.ui.components.menu_button import MenuButton
 import os
 import sys
 import subprocess
@@ -22,13 +23,44 @@ class AppSuitePage(QWidget):
         
         # Header layout
         header_layout = QHBoxLayout()
-        self.btn_busbar = QPushButton("Busbar Calculator")
-        self.btn_business = QPushButton("Business Tools")
-        self.btn_gst = QPushButton("GST Calculator")
+        header_layout.setContentsMargins(10, 10, 10, 10)
+        header_layout.setSpacing(10)
         
-        header_layout.addWidget(self.btn_busbar)
-        header_layout.addWidget(self.btn_business)
-        header_layout.addWidget(self.btn_gst)
+        self.btn_business = QPushButton("💼 Business Tools")
+        self.btn_busbar = QPushButton("⚡ Busbar Calculator")
+        self.btn_gst = QPushButton("📄 GST Calculator")
+        
+        nav_btn_style = """
+            QPushButton {
+                background-color: #f1f5f9;
+                color: #000000;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                padding: 10px 20px;
+                font-weight: bold;
+                font-size: 13px;
+                outline: none;
+            }
+            QPushButton:hover {
+                background-color: #e0f2fe;
+                color: #000000;
+            }
+            QPushButton:checked {
+                background-color: #e2e8f0;
+                color: #000000;
+                border: 1px solid #cbd5e1;
+                border-bottom: 4px solid #3b82f6;
+            }
+        """
+        
+        for btn in (self.btn_business, self.btn_busbar, self.btn_gst):
+            btn.setCheckable(True)
+            btn.setAutoExclusive(True)
+            btn.setStyleSheet(nav_btn_style)
+            btn.setCursor(Qt.PointingHandCursor)
+            header_layout.addWidget(btn)
+            
+        header_layout.addStretch()
         layout.addLayout(header_layout)
         
         # Stacked Widget for the apps
@@ -44,6 +76,9 @@ class AppSuitePage(QWidget):
         self.apps_stack.addWidget(self.gst_widget) # Index 2
         
         layout.addWidget(self.apps_stack, 1)
+        
+        # Set default tab
+        self.btn_business.setChecked(True)
         
         # Connect Header Buttons
         self.btn_business.clicked.connect(lambda: self.apps_stack.setCurrentIndex(0))
@@ -86,29 +121,39 @@ class UtilitiesWindow(QMainWindow):
             "Ctrl+P - Export PDF"
         )
 
-        self.eb_bill_btn = QPushButton("⚡ Electricity Bills")
+        self.btn_group = QButtonGroup(self)
+        self.btn_group.setExclusive(True)
+
+        self.eb_bill_btn = MenuButton("⚡ Electricity Bills")
         self.eb_bill_btn.clicked.connect(self.show_eb_bill)
         self.eb_bill_btn.setToolTip(self.shortcuts_tip)
 
-        self.zed_scorecard_btn = QPushButton("🏅 ZEDScoreCard")
+        self.zed_scorecard_btn = MenuButton("🏅 ZEDScoreCard")
         self.zed_scorecard_btn.clicked.connect(self.show_zed_scorecard)
         self.zed_scorecard_btn.setToolTip(self.shortcuts_tip)
 
-        self.delivery_btn = QPushButton("🚚 Timely Delivery")
+        self.delivery_btn = MenuButton("🚚 Timely Delivery")
         self.delivery_btn.clicked.connect(self.show_timely_delivery)
         self.delivery_btn.setToolTip(self.shortcuts_tip)
 
-        self.tally_reports_btn = QPushButton("📊 Tally Reports")
+        self.tally_reports_btn = MenuButton("📊 Tally Reports")
+        self.tally_reports_btn.setCheckable(False)
         self.tally_reports_btn.clicked.connect(self.show_tally_reports)
         self.tally_reports_btn.setToolTip("Launch Tally Analyzer Web App")
 
-        self.app_suite_btn = QPushButton("🛠️ App Suite")
+        self.app_suite_btn = MenuButton("🛠️ App Suite")
         self.app_suite_btn.clicked.connect(self.show_app_suite)
         self.app_suite_btn.setToolTip("Launch utility applications suite")
 
-        self.ar_dashboard_btn = QPushButton("📈 AR Dashboard")
+        self.ar_dashboard_btn = MenuButton("📈 AR Dashboard")
+        self.ar_dashboard_btn.setCheckable(False)
         self.ar_dashboard_btn.clicked.connect(self.show_ar_dashboard)
         self.ar_dashboard_btn.setToolTip("Generate AR Dashboard")
+        
+        self.btn_group.addButton(self.eb_bill_btn)
+        self.btn_group.addButton(self.zed_scorecard_btn)
+        self.btn_group.addButton(self.delivery_btn)
+        self.btn_group.addButton(self.app_suite_btn)
 
         sidebar_layout.addWidget(title)
         sidebar_layout.addWidget(self.eb_bill_btn)
@@ -120,7 +165,7 @@ class UtilitiesWindow(QMainWindow):
         sidebar_layout.addStretch()
         
         # Close button to return to main ERP
-        self.close_btn = QPushButton("↩️ Back to ERP")
+        self.close_btn = MenuButton("↩️ Back to ERP")
         self.close_btn.clicked.connect(self.close)
         sidebar_layout.addWidget(self.close_btn)
 
@@ -155,8 +200,8 @@ class UtilitiesWindow(QMainWindow):
         
         # Apply consistent styling
         self.setStyleSheet(
-            "#sidebar { background-color: #f0f2f5; } "
-            "#appTitle { font-size: 20px; font-weight: bold; margin-bottom: 16px; }"
+            "#sidebar { background-color: #f8fafc; } "
+            "#appTitle { font-size: 20px; font-weight: bold; margin-bottom: 16px; padding-left: 10px; }"
         )
         
         # Allow closing the fullscreen window with Escape key for better UX
@@ -166,14 +211,17 @@ class UtilitiesWindow(QMainWindow):
     def show_eb_bill(self):
         """Navigates to the Electricity Bill management page."""
         self.pages.setCurrentIndex(1)
+        self.eb_bill_btn.setChecked(True)
 
     def show_zed_scorecard(self):
         """Navigates to the ZED ScoreCard management page."""
         self.pages.setCurrentIndex(2)
+        self.zed_scorecard_btn.setChecked(True)
 
     def show_timely_delivery(self):
         """Navigates to the Timely Delivery management page."""
         self.pages.setCurrentIndex(3)
+        self.delivery_btn.setChecked(True)
 
     def show_tally_reports(self):
         """Launches the Tally Analyzer app in the background directly."""
@@ -202,3 +250,4 @@ class UtilitiesWindow(QMainWindow):
     def show_app_suite(self):
         """Navigates to the App Suite page."""
         self.pages.setCurrentIndex(4)
+        self.app_suite_btn.setChecked(True)

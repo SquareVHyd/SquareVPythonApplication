@@ -9,9 +9,12 @@ from PySide6.QtWidgets import (
     QFrame,
     QMessageBox,
     QSplitter,
+    QButtonGroup
 )
 from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtCore import Qt
+
+from app.ui.components.menu_button import MenuButton
 
 from app.ui.pricelist.pricelist_page import PriceListPage
 from app.ui.customers.customer_page import CustomerPage
@@ -71,17 +74,31 @@ class MainWindow(QMainWindow):
             "Ctrl+P - Export current table to PDF"
         )
 
-        self.dashboard_btn = QPushButton("📊 Dashboard")
-        self.customers_btn = QPushButton("👥 Customers")
-        self.quotation_details_btn = QPushButton("📝 Quotation Details")
-        self.pricelist_btn = QPushButton("🧾 Price List")
-        self.generic_spec_btn = QPushButton("🏷️ Generic Description")
-        self.modules_btn = QPushButton("📚 Modules")
-        self.busbar_btn = QPushButton("⚡ Busbar Materials")
-        self.utilities_btn = QPushButton("🔧 Utilities")
-        self.tools_btn = QPushButton("🛠️ Tools")
-        self.master_btn = QPushButton("📋 Master Data")
-        self.po_process_btn = QPushButton("📑 PO Process")
+        self.btn_group = QButtonGroup(self)
+        self.btn_group.setExclusive(True)
+
+        self.dashboard_btn = MenuButton("📊 Dashboard")
+        self.customers_btn = MenuButton("👥 Customers")
+        self.quotation_details_btn = MenuButton("📝 Quotation Details")
+        self.pricelist_btn = MenuButton("🧾 Price List")
+        self.generic_spec_btn = MenuButton("🏷️ Generic Description")
+        self.modules_btn = MenuButton("📚 Modules")
+        self.busbar_btn = MenuButton("⚡ Busbar Materials")
+        self.utilities_btn = MenuButton("🔧 Utilities")
+        self.tools_btn = MenuButton("🛠️ Tools")
+        self.master_btn = MenuButton("📋 Master Data")
+        self.po_process_btn = MenuButton("📑 PO Process")
+        
+        # Add to button group for exclusive active state
+        self.btn_group.addButton(self.dashboard_btn)
+        self.btn_group.addButton(self.customers_btn)
+        self.btn_group.addButton(self.quotation_details_btn)
+        self.btn_group.addButton(self.pricelist_btn)
+        self.btn_group.addButton(self.generic_spec_btn)
+        self.btn_group.addButton(self.modules_btn)
+        self.btn_group.addButton(self.busbar_btn)
+        self.btn_group.addButton(self.master_btn)
+        self.btn_group.addButton(self.po_process_btn)
 
         self.dashboard_btn.setToolTip(self.shortcuts_tip)
         self.customers_btn.setToolTip(self.shortcuts_tip)
@@ -104,11 +121,11 @@ class MainWindow(QMainWindow):
         self.master_btn.clicked.connect(self.show_master)
         self.po_process_btn.clicked.connect(self.show_po_process)
 
-        self.help_btn = QPushButton("❓ Help")
+        self.help_btn = MenuButton("❓ Help")
         self.help_btn.setToolTip(self.shortcuts_tip)
         self.help_btn.clicked.connect(self.show_shortcuts)
 
-        self.quit_btn = QPushButton("🚪 Quit Application")
+        self.quit_btn = MenuButton("🚪 Quit Application")
         self.quit_btn.setObjectName("quitButton")
         self.quit_btn.setToolTip("Save state and exit the application")
         self.quit_btn.clicked.connect(self.close)
@@ -163,8 +180,8 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(self.main_splitter)
         self.setStyleSheet(
-            "#sidebar { background-color: #f0f2f5; } "
-            "#appTitle { font-size: 20px; font-weight: bold; margin-bottom: 16px; border: none; background: transparent; text-align: left; } "
+            "#sidebar { background-color: #f8fafc; } "
+            "#appTitle { font-size: 20px; font-weight: bold; margin-bottom: 16px; border: none; background: transparent; text-align: left; padding-left: 10px; } "
             "#appTitle:hover { background-color: #e2e8f0; border-radius: 4px; } "
             "#quitButton { color: #d32f2f; font-weight: bold; } "
             "QHeaderView::section { background-color: #fce4ec; border: 1px solid #e2e8f0; padding: 4px; font-weight: bold; }"
@@ -233,18 +250,22 @@ class MainWindow(QMainWindow):
 
     def show_dashboard(self):
         self.pages.setCurrentIndex(0)
+        self.dashboard_btn.setChecked(True)
         UIStateManager.save_current_page(0)
 
     def show_customers(self):
         self.pages.setCurrentIndex(1)
+        self.customers_btn.setChecked(True)
         UIStateManager.save_current_page(1)
 
     def show_pricelist(self):
         self.pages.setCurrentIndex(2)
+        self.pricelist_btn.setChecked(True)
         UIStateManager.save_current_page(2)
 
     def show_generic_spec(self):
         self.pages.setCurrentIndex(7)
+        self.generic_spec_btn.setChecked(True)
         page = self.pages.widget(7)
         if hasattr(page, 'refresh_all'):
             page.refresh_all()
@@ -252,24 +273,28 @@ class MainWindow(QMainWindow):
 
     def show_po_process(self):
         self.pages.setCurrentWidget(self.po_process_page_instance)
+        self.po_process_btn.setChecked(True)
         UIStateManager.save_current_page(8)
 
     def show_modules(self):
         self.pages.setCurrentIndex(3)
+        self.modules_btn.setChecked(True)
         UIStateManager.save_current_page(3)
 
     def show_busbar(self):
         self.pages.setCurrentIndex(4)
+        self.busbar_btn.setChecked(True)
         UIStateManager.save_current_page(4)
 
     def show_master(self):
         self.pages.setCurrentIndex(5)
+        self.master_btn.setChecked(True)
         UIStateManager.save_current_page(5)
 
     def show_quotation_details(self):
         """Switches to the Quotation Details page within the main window."""
-        # Assuming QuotationDetailsPage is at index 6
         self.pages.setCurrentIndex(6)
+        self.quotation_details_btn.setChecked(True)
         # Automatically show the quotations list instead of the welcome screen
         details_page = self.pages.widget(6)
         if hasattr(details_page, 'show_quotations'):

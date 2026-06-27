@@ -1,10 +1,12 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, 
-    QPushButton, QWidget, QLineEdit, QScrollArea, QMessageBox, QGridLayout, QFrame
+    QPushButton, QWidget, QLineEdit, QScrollArea, QMessageBox, QGridLayout, QFrame,
+    QFileDialog, QInputDialog
 )
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
+from PySide6.QtCore import Qt, QMarginsF, QPoint
+from PySide6.QtGui import QFont, QPainter, QPageSize, QPageLayout, QPdfWriter, QPixmap
 from datetime import datetime
+import os
 
 from app.services.test_report_service import TestReportService
 from app.services.quotation_service import QuotationService
@@ -45,26 +47,64 @@ class TestReportsPage(QWidget):
         self.panel_combo.currentIndexChanged.connect(self.on_panel_selected)
         top_bar.addWidget(self.panel_combo)
         
-        self.save_btn = QPushButton("💾 Save Report")
+        self.save_btn = QPushButton("💾 Save Data")
         self.save_btn.clicked.connect(self.save_report)
         top_bar.addWidget(self.save_btn)
+        
+        self.pdf_btn = QPushButton("📄 Save as PDF")
+        self.pdf_btn.clicked.connect(self.save_as_pdf)
+        top_bar.addWidget(self.pdf_btn)
+        
         top_bar.addStretch()
         main_layout.addLayout(top_bar)
         
         # --- Scrollable Document Area ---
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
-        scroll_area.setStyleSheet("QScrollArea { background-color: #f0f0f0; }")
+        scroll_area.setAlignment(Qt.AlignCenter)
+        scroll_area.setStyleSheet("QScrollArea { background-color: #e2e8f0; border: none; }")
         
         self.doc_widget = QWidget()
-        self.doc_widget.setStyleSheet("QWidget { background-color: white; color: black; }")
+        # Style to look like an A4 document page
+        self.doc_widget.setStyleSheet("""
+            QWidget { 
+                background-color: white; 
+                color: black; 
+                font-family: Arial;
+                font-size: 12px;
+            }
+            QLabel { padding: 2px; }
+        """)
+        self.doc_widget.setFixedWidth(850) # Standard A4 rough width ratio
+        
         self.doc_layout = QVBoxLayout(self.doc_widget)
         self.doc_layout.setContentsMargins(40, 40, 40, 40)
-        self.doc_layout.setSpacing(15)
+        self.doc_layout.setSpacing(10)
+        
+        # Company Header Layout
+        company_header_layout = QHBoxLayout()
+        company_header_layout.addStretch()
+        
+        logo_lbl = QLabel()
+        logo_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "Images", "SQV_Header.png"))
+        pixmap = QPixmap(logo_path)
+        if not pixmap.isNull():
+            pixmap = pixmap.scaledToHeight(40, Qt.SmoothTransformation)
+            logo_lbl.setPixmap(pixmap)
+            company_header_layout.addWidget(logo_lbl)
+            
+        company_lbl = QLabel(" SQUARE V ENGINEERING ENTERPRISES")
+        company_font = QFont("Arial", 25, QFont.Bold)
+        company_lbl.setFont(company_font)
+        company_lbl.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        company_header_layout.addWidget(company_lbl)
+        
+        company_header_layout.addStretch()
+        self.doc_layout.addLayout(company_header_layout)
         
         # Title
         title_lbl = QLabel("Test Certificate")
-        title_font = QFont("Arial", 18, QFont.Bold)
+        title_font = QFont("Arial", 28, QFont.Bold)
         title_font.setUnderline(True)
         title_lbl.setFont(title_font)
         title_lbl.setAlignment(Qt.AlignCenter)
@@ -125,10 +165,6 @@ class TestReportsPage(QWidget):
         self.lbl_project = QLabel("")
         header_grid.addWidget(self.lbl_project, 6, 1, 1, 5)
         
-        # Row 7
-        header_grid.addWidget(QLabel("Manufactured By:"), 7, 0)
-        header_grid.addWidget(QLabel("SQUARE V ELECTRICAL AND ELECTRONICS (PVT.) LTD."), 7, 1, 1, 5)
-        
         # Row 5
         header_grid.addWidget(QLabel("Instruments:"), 5, 0)
         header_grid.addWidget(QLabel("Insulation Resistance With 5000V Megger, 200 Gega Ohms, MAKE: HoldPeak"), 5, 1, 1, 5)
@@ -138,8 +174,10 @@ class TestReportsPage(QWidget):
         # --- Helper for creating sections ---
         def create_section(title, columns, rows, input_dict):
             frame = QFrame()
+            frame.setStyleSheet("QFrame { border: 1px solid black; } QLabel { border: none; } QLineEdit { border: 1px solid #ccc; }")
             layout = QGridLayout(frame)
-            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setContentsMargins(5, 5, 5, 5)
+            layout.setSpacing(5)
             
             # Title Row
             t_lbl = QLabel(title)
@@ -191,6 +229,7 @@ class TestReportsPage(QWidget):
                 input_dict[row_item[1]] = {"result": res_in, "remark": rem_in}
                 
             self.doc_layout.addWidget(frame)
+            return frame
             
         # General Inspection
         gen_rows = [
@@ -201,7 +240,7 @@ class TestReportsPage(QWidget):
             ("Bill of Material", "BillOfMaterial"),
             ("Aluminum BB Torque", "AluminumBBTorque")
         ]
-        create_section("General Inspection", ["Result", "Remarks"], gen_rows, self.general_inputs)
+        self.general_frame = create_section("General Inspection", ["Result", "Remarks"], gen_rows, self.general_inputs)
         
         # IR Helper
         ir_rows = [
@@ -213,15 +252,23 @@ class TestReportsPage(QWidget):
             ("Body to Neutral", "BodyToNeutral")
         ]
         
-        create_section("IR-1 | LV Test Before HV Test(500Vac):", ["Result", "Remark"], ir_rows, self.ir1_inputs)
-        create_section("IR-2 | High Voltage test at 2.5 Kv for period of ONE minute", ["Result", "Remark"], ir_rows, self.ir2_inputs)
-        create_section("IR-3 | LV Test After HV Test (500V)", ["Result", "Remark"], ir_rows, self.ir3_inputs)
+        self.ir1_frame = create_section("IR-1 | LV Test Before HV Test(500Vac):", ["Result", "Remark"], ir_rows, self.ir1_inputs)
+        self.ir2_frame = create_section("IR-2 | High Voltage test at 2.5 Kv for period of ONE minute", ["Result", "Remark"], ir_rows, self.ir2_inputs)
+        self.ir3_frame = create_section("IR-3 | LV Test After HV Test (500V)", ["Result", "Remark"], ir_rows, self.ir3_inputs)
         
         # --- Footer ---
         footer_layout = QHBoxLayout()
         footer_layout.addWidget(QLabel("Witnessed By:"))
         self.footer_inputs["WitnessedBy"] = QLineEdit()
         footer_layout.addWidget(self.footer_inputs["WitnessedBy"])
+        
+        footer_layout.addStretch()
+        
+        stamp_lbl = QLabel("Signature & Stamp")
+        stamp_lbl.setAlignment(Qt.AlignCenter)
+        stamp_lbl.setStyleSheet("border: 1px dashed #cbd5e1; color: #94a3b8;")
+        stamp_lbl.setFixedSize(150, 100)
+        footer_layout.addWidget(stamp_lbl)
         
         footer_layout.addStretch()
         
@@ -358,3 +405,50 @@ class TestReportsPage(QWidget):
             QMessageBox.information(self, "Success", "Test report saved successfully.")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to save test report: {e}")
+
+    def save_as_pdf(self):
+        panel_name = self.lbl_panel_name.text().replace(" ", "_")
+        if not panel_name:
+            QMessageBox.warning(self, "Warning", "Please select a panel first.")
+            return
+
+        test_type, ok = QInputDialog.getItem(self, "Select Test Type", "Select Test Type for PDF:", ["Hv-Test", "Lv-Test"], 0, False)
+        if not ok:
+            return
+
+        file_path, _ = QFileDialog.getSaveFileName(self, "Save as PDF", f"{panel_name}_{test_type}_TestCertificate.pdf", "PDF Files (*.pdf)")
+        if not file_path:
+            return
+
+        is_lv = (test_type == "Lv-Test")
+        if is_lv:
+            self.ir2_frame.hide()
+            self.ir3_frame.hide()
+
+        try:
+            pdf_writer = QPdfWriter(file_path)
+            pdf_writer.setPageSize(QPageSize.A4)
+            pdf_writer.setPageMargins(QMarginsF(10, 10, 10, 10), QPageLayout.Millimeter)
+            
+            painter = QPainter()
+            painter.begin(pdf_writer)
+            try:
+                # Scale the widget to fit the A4 page width
+                rect = painter.viewport()
+                size = self.doc_widget.size()
+                
+                scale = rect.width() / size.width()
+                painter.scale(scale, scale)
+                
+                self.doc_widget.render(painter, QPoint(0, 0))
+            finally:
+                painter.end()
+                del painter
+            
+            QMessageBox.information(self, "Success", f"PDF saved successfully to:\n{file_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to generate PDF:\n{e}")
+        finally:
+            if is_lv:
+                self.ir2_frame.show()
+                self.ir3_frame.show()

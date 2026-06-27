@@ -226,7 +226,7 @@ class GenericSpecPage(QWidget):
         self.price_table.itemChanged.connect(self.handle_price_checkbox_changed)
         
         # Set resize modes for all columns to allow manual resizing and moving
-        for i in range(12):
+        for i in range(6):
             self.price_table.horizontalHeader().setSectionResizeMode(i, QHeaderView.Interactive)
         self.price_table.horizontalHeader().setSectionsMovable(True)
         self.price_table.horizontalHeader().setStretchLastSection(True)

@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS public."Complaint"
+(
+    "ID" BIGSERIAL PRIMARY KEY,
+    "PO_ID" bigint NOT NULL,
+    "Complaint_Date" date NOT NULL,
+    "Panel_Name" text,
+    "Site" text,
+    "Customer_Name" text,
+    "Complaint_Type" text,
+    "Complaint_Description" text,
+    "Warranty" boolean,
+    "Attended_By" text,
+    "Feedback" text,
+    "Charged_Amount" numeric(12,2) DEFAULT 0.00,
+    "status" text DEFAULT 'pending',
+    CONSTRAINT "fk_complaint_po"
+        FOREIGN KEY ("PO_ID")
+        REFERENCES public."po_Customer"("ID")
+        ON UPDATE CASCADE
+        ON DELETE CASCADE
+);

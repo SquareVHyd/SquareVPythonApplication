@@ -27,7 +27,70 @@ class BusbarPage(QWidget):
         self._restore_state()
 
     def setup_ui(self):
-        self.main_layout = QVBoxLayout(self)
+        btn_style = """
+            QPushButton {
+                background-color: #e0f2fe;
+                color: #0c4a6e;
+                border: 1px solid #bae6fd;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover { background-color: #bae6fd; }
+            QPushButton:pressed { background-color: #7dd3fc; }
+            QPushButton:disabled { background-color: transparent; color: #94a3b8; border: none; }
+            QComboBox {
+                background-color: white;
+                border: 1px solid #cbd5e1;
+                border-radius: 4px;
+                padding: 5px 12px;
+                font-size: 13px;
+                color: #0f172a;
+            }
+            QComboBox::drop-down {
+                border-left: 1px solid #cbd5e1;
+                width: 24px;
+            }
+        """
+        self.setStyleSheet(self.styleSheet() + btn_style + "#sidebar { background-color: #f0f2f5; } #appTitle { font-size: 20px; font-weight: bold; margin-bottom: 16px; }")
+        self.main_layout = QHBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Sidebar setup matching quotation details UI
+        sidebar_frame = QFrame()
+        sidebar_frame.setObjectName("sidebar")
+        sidebar_frame.setFixedWidth(240)
+        sidebar_layout = QVBoxLayout(sidebar_frame)
+        sidebar_layout.setContentsMargins(20, 20, 20, 20)
+        sidebar_layout.setSpacing(12)
+
+        sidebar_title = QLabel("Busbar Menu")
+        sidebar_title.setObjectName("appTitle")
+        sidebar_title.setAlignment(Qt.AlignCenter)
+
+        self.summary_btn = QPushButton("📊 Busbar Summary")
+        self.summary_btn.clicked.connect(self.show_summary_view)
+
+        self.metal_btn = QPushButton("🏭 Metal Properties")
+        self.metal_btn.clicked.connect(self.open_metal_manager)
+
+        self.sleeve_btn = QPushButton("📏 Sleeve Sizes")
+        self.sleeve_btn.clicked.connect(self.open_sleeve_manager)
+
+        sidebar_layout.addWidget(sidebar_title)
+        sidebar_layout.addWidget(self.summary_btn)
+        sidebar_layout.addWidget(self.metal_btn)
+        sidebar_layout.addWidget(self.sleeve_btn)
+        sidebar_layout.addStretch()
+
+        self.main_layout.addWidget(sidebar_frame)
+
+        # Main content area
+        content_widget = QWidget()
+        self.content_layout = QVBoxLayout(content_widget)
+        self.content_layout.setContentsMargins(0, 0, 0, 0)
+
         self.splitter = QSplitter(Qt.Horizontal)
 
         # LEFT CONTAINER (Main Table)
@@ -50,6 +113,20 @@ class BusbarPage(QWidget):
         self.edit_btn.setToolTip("(Ctrl+E)")
         self.delete_btn = QPushButton("🗑️ Delete")
         self.delete_btn.setToolTip("(Delete)")
+        self.delete_btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #fee2e2;
+                        color: #991b1b;
+                        border: 1px solid #fecaca;
+                        padding: 6px 12px;
+                        border-radius: 4px;
+                        font-weight: bold;
+                        font-size: 13px;
+                    }
+                    QPushButton:hover { background-color: #fecaca; }
+                    QPushButton:pressed { background-color: #fca5a5; }
+                    QPushButton:disabled { background-color: transparent; color: #94a3b8; border: none; }
+                """)
         self.refresh_btn = QPushButton("🔄 Refresh")
         self.refresh_btn.setToolTip("(Ctrl+R)")
 
@@ -128,13 +205,15 @@ class BusbarPage(QWidget):
         self.splitter.setStretchFactor(0, 2)
         self.splitter.setStretchFactor(1, 1)
         
-        self.main_layout.addWidget(self.splitter)
+        self.content_layout.addWidget(self.splitter)
 
         # Footer Status Bar for selection statistics
         self.status_bar = QStatusBar()
         self.status_bar.setSizeGripEnabled(False)
         self.status_bar.setStyleSheet("QStatusBar { background-color: #f8fafc; color: #475569; border-top: 1px solid #e2e8f0; max-height: 25px; }")
-        self.main_layout.addWidget(self.status_bar)
+        self.content_layout.addWidget(self.status_bar)
+
+        self.main_layout.addWidget(content_widget, 1)
 
         self.table.itemSelectionChanged.connect(self._update_status_bar_stats)
 
@@ -235,7 +314,7 @@ class BusbarPage(QWidget):
         self.summary_table.setSortingEnabled(False)
         self.summary_table.setRowCount(len(rows))
         for i, row in enumerate(rows):
-            for j, val in enumerate(row):
+            for j, val in enumerate(row[1:]):  # Skip 'ID' column
                 self.summary_table.setItem(i, j, NumericTableWidgetItem(str(val or "")))
         self.summary_table.setSortingEnabled(True)
         self.summary_table.fix_column_widths()
@@ -243,10 +322,11 @@ class BusbarPage(QWidget):
     def export_summary_excel(self):
         # Export full summary view without filters as requested
         data = self.service.get_summary_view(filters=None)
+        export_data = [row[1:] for row in data]  # Skip 'ID' column
         headers = ["Size", "CalAmps", "MetalKgPerMeter", "RsUnitMeter", "Run", "BBSize", "Metal", "Width", "Thick", "Current Density", "Unit Cost", "Sleeve Rs", "Final Cost"]
         file_path, _ = QFileDialog.getSaveFileName(self, "Export Full Summary Report", "", "Excel Files (*.xlsx)")
         if file_path:
-            ExcelService().export(headers, data, file_path)
+            ExcelService().export(headers, export_data, file_path)
             QMessageBox.information(self, "Export", "Summary report exported successfully.")
 
     def refresh_table(self):
@@ -383,6 +463,10 @@ class BusbarPage(QWidget):
         if QMessageBox.question(self, "Delete", "Delete selected busbar entry?") == QMessageBox.Yes:
             self.service.delete_busbar(bb_id)
             self.refresh_table()
+
+    def show_summary_view(self):
+        self.right_widget.show()
+        self.apply_summary_filters()
 
     def open_metal_manager(self):
         dialog = MetalManagerDialog(self)

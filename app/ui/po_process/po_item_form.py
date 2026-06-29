@@ -13,6 +13,34 @@ class POItemForm(QDialog):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
+        btn_style = """
+            QPushButton {
+                background-color: #e0f2fe;
+                color: #0c4a6e;
+                border: 1px solid #bae6fd;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover { background-color: #bae6fd; }
+            QPushButton:pressed { background-color: #7dd3fc; }
+            QPushButton:disabled { background-color: transparent; color: #94a3b8; border: none; }
+            QComboBox {
+                background-color: white;
+                border: 1px solid #cbd5e1;
+                border-radius: 4px;
+                padding: 5px 12px;
+                font-size: 13px;
+                color: #0f172a;
+            }
+            QComboBox::drop-down {
+                border-left: 1px solid #cbd5e1;
+                width: 24px;
+            }
+        """
+        self.setStyleSheet(self.styleSheet() + btn_style)
+
         form_layout = QFormLayout()
 
         self.desc_input = QLineEdit()

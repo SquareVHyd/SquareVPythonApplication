@@ -29,6 +29,35 @@ class ModuleViewPage(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
+
+        btn_style = """
+            QPushButton {
+                background-color: #e0f2fe;
+                color: #0c4a6e;
+                border: 1px solid #bae6fd;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover { background-color: #bae6fd; }
+            QPushButton:pressed { background-color: #7dd3fc; }
+            QPushButton:disabled { background-color: transparent; color: #94a3b8; border: none; }
+            QComboBox {
+                background-color: white;
+                border: 1px solid #cbd5e1;
+                border-radius: 4px;
+                padding: 5px 12px;
+                font-size: 13px;
+                color: #0f172a;
+            }
+            QComboBox::drop-down {
+                border-left: 1px solid #cbd5e1;
+                width: 24px;
+            }
+        """
+        self.setStyleSheet(self.styleSheet() + btn_style)
+
         header = QHBoxLayout()
 
         title = QLabel("Modules Overview")
@@ -51,6 +80,20 @@ class ModuleViewPage(QWidget):
         self.edit_btn.clicked.connect(self._edit_module_type)
 
         self.delete_btn = QPushButton("🗑️ Delete")
+        self.delete_btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #fee2e2;
+                        color: #991b1b;
+                        border: 1px solid #fecaca;
+                        padding: 6px 12px;
+                        border-radius: 4px;
+                        font-weight: bold;
+                        font-size: 13px;
+                    }
+                    QPushButton:hover { background-color: #fecaca; }
+                    QPushButton:pressed { background-color: #fca5a5; }
+                    QPushButton:disabled { background-color: transparent; color: #94a3b8; border: none; }
+                """)
         self.delete_btn.setToolTip("(Delete)")
         self.delete_btn.clicked.connect(self._delete_module_type)
 

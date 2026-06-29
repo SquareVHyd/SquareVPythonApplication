@@ -155,6 +155,34 @@ class PoGeneratorPage(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
+
+        btn_style = """
+            QPushButton {
+                background-color: #e0f2fe;
+                color: #0c4a6e;
+                border: 1px solid #bae6fd;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover { background-color: #bae6fd; }
+            QPushButton:pressed { background-color: #7dd3fc; }
+            QPushButton:disabled { background-color: transparent; color: #94a3b8; border: none; }
+            QComboBox {
+                background-color: white;
+                border: 1px solid #cbd5e1;
+                border-radius: 4px;
+                padding: 5px 12px;
+                font-size: 13px;
+                color: #0f172a;
+            }
+            QComboBox::drop-down {
+                border-left: 1px solid #cbd5e1;
+                width: 24px;
+            }
+        """
+        self.setStyleSheet(self.styleSheet() + btn_style)
         
         # --- Top controls ---
         header = QHBoxLayout()
@@ -227,12 +255,12 @@ class PoGeneratorPage(QWidget):
         
         # Sender Details
         self.sender_edit = QTextEdit()
-        self.sender_edit.setPlainText("National Engineering Enterprises\n#303,3rd floor, Adinath Sqare,\n5-3-404 TO 411,Hyderbasthi,\nnear Gujarati High School Lane,\nR.P Road,Secunderabad -500 003")
+        self.sender_edit.setPlainText("To\nNational Engineering Enterprises\n \n#303,3rd floor, Adinath Sqare,\n5-3-404 TO 411,Hyderbasthi,\nnear Gujarati High School Lane,\nR.P Road,Secunderabad -500 003")
         self.header_table.setCellWidget(0, 0, self.sender_edit)
         
         # Recipient Details
         self.rec_edit = QTextEdit()
-        self.rec_edit.setPlainText("Square V Engineering Enterprises\nGROUND FLOOR, Road No .14\nSurvey No:298(P), Pipe Line Road,\nPhase-I, IDA, Jeedimetla,\nHyderabad - 500055, Telangana, India\nEmail: info.squarev@gmail.com\nExport: IEC:AFKFS1080B ,State Code: 36\nGSTIN : 36AFKFS1080B1Z7")
+        self.rec_edit.setPlainText("From\nSquare V Engineering Enterprises\n \nGROUND FLOOR, Road No .14\nSurvey No:298(P), Pipe Line Road,\nPhase-I, IDA, Jeedimetla,\nHyderabad - 500055, Telangana, India\nEmail: info.squarev@gmail.com\nExport: IEC:AFKFS1080B ,State Code: 36\nGSTIN : 36AFKFS1080B1Z7")
         self.header_table.setCellWidget(0, 1, self.rec_edit)
         
         def wrap_top(widget):
@@ -535,6 +563,30 @@ class PoGeneratorPage(QWidget):
         
         self.table.blockSignals(False)
 
+    def amount_to_words(self, n):
+        if n == 0:
+            return 'Zero Rupees Only'
+        
+        ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen']
+        tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety']
+        
+        def num_to_words(num):
+            if num == 0: return ''
+            if num < 20: return ones[num] + ' '
+            if num < 100: return tens[num // 10] + ' ' + num_to_words(num % 10)
+            if num < 1000: return ones[num // 100] + ' Hundred ' + num_to_words(num % 100)
+            if num < 100000: return num_to_words(num // 1000) + 'Thousand ' + num_to_words(num % 1000)
+            if num < 10000000: return num_to_words(num // 100000) + 'Lakh ' + num_to_words(num % 100000)
+            return num_to_words(num // 10000000) + 'Crore ' + num_to_words(num % 10000000)
+            
+        rupees = int(n)
+        paise = int(round((n - rupees) * 100))
+        
+        res = 'Rupees ' + num_to_words(rupees).strip()
+        if paise > 0:
+            res += ' and ' + num_to_words(paise).strip() + ' Paise'
+        return res + ' Only'
+
     def preview_pdf(self):
         # Collect table data
         rows_html = ""
@@ -570,17 +622,18 @@ class PoGeneratorPage(QWidget):
         
         # We need to construct the sender block from sender_html
         sender_parts = sender_html.split('<br>')
-        sender_bold = sender_parts[0] if sender_parts else ''
-        sender_rest = '<br>'.join(sender_parts[1:]) if len(sender_parts) > 1 else ''
+        sender_bold = '<br>'.join(sender_parts[:2]) if len(sender_parts) >= 2 else (sender_parts[0] if sender_parts else '')
+        sender_rest = '<br>'.join(sender_parts[2:]) if len(sender_parts) > 2 else ''
 
         # Construct recipient block
         rec_parts = rec_html.split('<br>')
-        rec_bold = rec_parts[0] if rec_parts else ''
-        rec_rest = '<br>'.join(rec_parts[1:]) if len(rec_parts) > 1 else ''
+        rec_bold = '<br>'.join(rec_parts[:2]) if len(rec_parts) >= 2 else (rec_parts[0] if rec_parts else '')
+        rec_rest = '<br>'.join(rec_parts[2:]) if len(rec_parts) > 2 else ''
         
         subtotal_str = f"₹ {self.subtotal_val:,.2f}"
         gst_str = f"₹ {self.gst_val:,.2f}"
         grand_total_str = f"₹ {self.grand_total_val:,.2f}"
+        words_str = self.amount_to_words(self.grand_total_val)
         
         html = f"""
         <!DOCTYPE html>
@@ -668,13 +721,13 @@ class PoGeneratorPage(QWidget):
         <div class="header" style="width: 100%; margin-bottom: 30px;">
             <table style="width: 100%; border: none;" cellspacing="0" cellpadding="0">
                 <tr>
-                    <td style="width: 50%; vertical-align: top; border: none; font-size: 6pt; line-height: 1.5; padding-right: 20px;" class="block">
+                    <td style="width: 65%; vertical-align: top; border: none; font-size: 6pt; line-height: 1.5; padding-right: 20px;" class="block">
                         <div style="font-weight: bold; margin-bottom: 2px;">Date Issued: {self.date_edit.text()}</div>
                         <div style="font-weight: bold; margin-bottom: 10px;">Reference: {self.ref_edit.text()}</div>
                         <div class="bold" style="font-weight: bold;">{sender_bold}</div>
                         {sender_rest}
                     </td>
-                    <td style="width: 50%; vertical-align: top; border: none; font-size: 6pt; line-height: 1.5; padding-left: 20px;" class="block">
+                    <td style="width: 35%; vertical-align: top; border: none; font-size: 6pt; line-height: 1.5; padding-left: 40px; padding-right: 10px;" class="block">
                         <div class="bold" style="font-weight: bold;">{rec_bold}</div>
                         {rec_rest}
                     </td>
@@ -720,6 +773,11 @@ class PoGeneratorPage(QWidget):
             <td style="padding: 8px; border: 1px solid black;">Grand Total</td>
             <td class="right" style="padding: 8px; border: 1px solid black;">{grand_total_str}</td>
         </tr>
+        <tr>
+            <td colspan="2" style="padding: 8px; border: 1px solid black; text-align: left;">
+                Amount in Words:<br><span style="font-weight: normal;">{words_str}</span>
+            </td>
+        </tr>
         </table>
         
         <div style="clear:both"></div>
@@ -755,16 +813,49 @@ class PoGeneratorPage(QWidget):
             printer.setOutputFileName(filename)
             printer.setPageSize(QPageSize(QPageSize.A4))
             
-            from PySide6.QtCore import QMarginsF
-            from PySide6.QtGui import QPageLayout
+            from PySide6.QtCore import QMarginsF, QRectF
+            from PySide6.QtGui import QPageLayout, QPainter
             printer.setPageMargins(QMarginsF(15, 15, 15, 15), QPageLayout.Millimeter)
             
             doc = QTextDocument()
             doc.setHtml(html)
             
             # Ensure document layout uses printer dimensions
-            doc.setPageSize(printer.pageRect(QPrinter.DevicePixel).size())
+            page_rect = printer.pageRect(QPrinter.DevicePixel)
+            doc.setPageSize(page_rect.size())
             
-            doc.print_(printer)
+            painter = QPainter(printer)
+            page_count = doc.pageCount()
+            
+            for i in range(page_count):
+                if i > 0:
+                    printer.newPage()
+                    
+                painter.save()
+                painter.translate(0, -i * page_rect.height())
+                
+                clip = QRectF(0, i * page_rect.height(), page_rect.width(), page_rect.height())
+                doc.drawContents(painter, clip)
+                painter.restore()
+                
+                painter.save()
+                font = painter.font()
+                font.setPointSize(6)
+                painter.setFont(font)
+                
+                font_metrics = painter.fontMetrics()
+                margin_offset = font_metrics.height() // 2
+                
+                painter.drawText(
+                    0, 
+                    int(page_rect.height()) + margin_offset, 
+                    int(page_rect.width()), 
+                    font_metrics.height() * 2, 
+                    Qt.AlignHCenter | Qt.AlignTop, 
+                    f"Page : {i + 1} of {page_count}"
+                )
+                painter.restore()
+                
+            painter.end()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to save PDF file:\n{str(e)}")

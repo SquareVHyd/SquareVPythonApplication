@@ -52,6 +52,17 @@ def format_indian_currency(value):
     result = formatted_integer + "." + decimal_part
     return "-" + result if is_negative else result
 
+from PySide6.QtCore import QObject, QEvent
+class ClickFilter(QObject):
+    def __init__(self, callback, parent=None):
+        super().__init__(parent)
+        self.callback = callback
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.LeftButton:
+            self.callback()
+            return True
+        return super().eventFilter(obj, event)
+
 class QuotationPreviewPage(QWidget):
     """
     A hierarchical 'one-stop' view for managing a Quotation, its Panels, 
@@ -67,6 +78,33 @@ class QuotationPreviewPage(QWidget):
 
     def setup_ui(self):
         self.layout = QVBoxLayout(self)
+        btn_style = """
+            QPushButton {
+                background-color: #e0f2fe;
+                color: #0c4a6e;
+                border: 1px solid #bae6fd;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover { background-color: #bae6fd; }
+            QPushButton:pressed { background-color: #7dd3fc; }
+            QPushButton:disabled { background-color: transparent; color: #94a3b8; border: none; }
+            QComboBox {
+                background-color: white;
+                border: 1px solid #cbd5e1;
+                border-radius: 4px;
+                padding: 5px 12px;
+                font-size: 13px;
+                color: #0f172a;
+            }
+            QComboBox::drop-down {
+                border-left: 1px solid #cbd5e1;
+                width: 24px;
+            }
+        """
+        self.setStyleSheet(self.styleSheet() + btn_style)
         
         # Header Section
         header = QHBoxLayout()
@@ -130,7 +168,7 @@ class QuotationPreviewPage(QWidget):
             t4, c4 = self._add_revision_table()
 
             def toggle_all(checked):
-                btn_collapse_all.setText("Expand All Forms" if checked else "Collapse All Forms")
+                btn_collapse_all.setText("▶ Expand All Forms" if checked else "▼ Collapse All Forms")
                 for t, c in [(t1, c1), (t2, c2), (t3, c3), (t4, c4)]:
                     if t and c:
                         t.setChecked(not checked)
@@ -166,7 +204,7 @@ class QuotationPreviewPage(QWidget):
         grand_total_lbl = QLabel(f"<b>Total Quotation Price =</b> ₹{format_indian_currency(grand_total)}")
         grand_total_lbl.setStyleSheet("font-size: 18px; color: #b91c1c; font-weight: bold; margin-top: 10px; margin-left: 20px;")
         
-        btn_collapse_panels = QPushButton("Collapse All Panels")
+        btn_collapse_panels = QPushButton("▼ Collapse All Panels")
         btn_collapse_panels.setCheckable(True)
         btn_collapse_panels.setStyleSheet("background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px; font-weight: bold; margin-top: 10px;")
         
@@ -188,7 +226,7 @@ class QuotationPreviewPage(QWidget):
                 self.panel_toggles.append((t, c, p_row[0]))
 
         def toggle_all_panels(checked):
-            btn_collapse_panels.setText("Expand All Panels" if checked else "Collapse All Panels")
+            btn_collapse_panels.setText("▶ Expand All Panels" if checked else "▼ Collapse All Panels")
             for t, c, pid in self.panel_toggles:
                 t.setChecked(not checked)
                 self._on_panel_toggled(not checked, pid, c, t)
@@ -218,7 +256,7 @@ class QuotationPreviewPage(QWidget):
         
         btn_layout = QHBoxLayout()
         edit_btn = QPushButton("✏️ Edit Quotation")
-        edit_btn.setFixedWidth(120)
+        # edit_btn.setFixedWidth(120)
         edit_btn.clicked.connect(lambda: self._edit_quotation(data))
         btn_layout.addWidget(lbl)
         btn_layout.addStretch()
@@ -252,7 +290,7 @@ class QuotationPreviewPage(QWidget):
 
         # Toggle Button
         toggle_btn = QPushButton()
-        toggle_btn.setFixedSize(24, 24)
+        # toggle_btn.setFixedSize(24, 24)
         toggle_btn.setCheckable(True)
         
         # Restore toggle state, default to collapsed (False)
@@ -263,10 +301,16 @@ class QuotationPreviewPage(QWidget):
 
         p_info = QLabel(f"<b>Panel:</b> {name} ({cat}) | <b>Qty:</b> {qty} | <b>Dim:</b> {l}x{h}x{d}")
         p_info.setStyleSheet("border: none; font-size: 14px; color: #1e293b;")
+        p_info.setCursor(Qt.PointingHandCursor)
+        p_info._filter = ClickFilter(toggle_btn.click, p_info)
+        p_info.installEventFilter(p_info._filter)
         
         # Panel Cost Label
         total_panel_lbl = QLabel(f"<b>Qty =</b> {panel_qty} | <b>Unit Panel Cost =</b> ₹{format_indian_currency(panel_total)} | <b>Total Panel Cost =</b> ₹{format_indian_currency(total_panel_cost)}")
         total_panel_lbl.setStyleSheet("border: none; font-size: 14px; color: #2563eb; font-weight: bold; margin-left: 15px;")
+        total_panel_lbl.setCursor(Qt.PointingHandCursor)
+        total_panel_lbl._filter = ClickFilter(toggle_btn.click, total_panel_lbl)
+        total_panel_lbl.installEventFilter(total_panel_lbl._filter)
 
         edit_btn = QPushButton("✏️")
         edit_btn.setToolTip("Edit Panel")
@@ -277,7 +321,7 @@ class QuotationPreviewPage(QWidget):
         del_btn.clicked.connect(lambda: self._delete_panel(pid))
         
         add_mod_btn = QPushButton("📦 Add Module")
-        add_mod_btn.setFixedWidth(100)
+        # add_mod_btn.setFixedWidth(100)
         add_mod_btn.clicked.connect(lambda: self._add_module(pid))
 
         header.addWidget(toggle_btn)
@@ -326,31 +370,37 @@ class QuotationPreviewPage(QWidget):
 
         # Toggle Button
         toggle_btn = QPushButton("▼")
-        toggle_btn.setFixedSize(24, 24)
+        # toggle_btn.setFixedSize(24, 24)
         toggle_btn.setCheckable(True)
         toggle_btn.setChecked(True)
-        toggle_btn.setStyleSheet("font-weight: bold; border: none; background: transparent; color: #334155;")
+        toggle_btn.setStyleSheet("font-weight: bold; border: none; background: transparent; color: #334155; padding: 4px;")
 
         mod_lbl = QLabel(f"<b>Module:</b> {mt_name} | <b>Ing/Og:</b> {ing_og} | <b>P/kA:</b> {pole}/{ka}")
         mod_lbl.setStyleSheet("border: none; font-size: 13px; color: #334155;")
+        mod_lbl.setCursor(Qt.PointingHandCursor)
+        mod_lbl._filter = ClickFilter(toggle_btn.click, mod_lbl)
+        mod_lbl.installEventFilter(mod_lbl._filter)
         
         # Total Module Cost Label
         total_mod_lbl = QLabel(f"<b>Qty =</b> {m_qty} | <b>Unit Module Cost =</b> ₹{format_indian_currency(total_items_amount)} | <b>Module Total =</b> ₹{format_indian_currency(module_total)}")
         total_mod_lbl.setStyleSheet("border: none; font-size: 13px; color: #059669; font-weight: bold; margin-left: 15px;")
+        total_mod_lbl.setCursor(Qt.PointingHandCursor)
+        total_mod_lbl._filter = ClickFilter(toggle_btn.click, total_mod_lbl)
+        total_mod_lbl.installEventFilter(total_mod_lbl._filter)
 
         m_edit_btn = QPushButton("✏️")
-        m_edit_btn.setFixedSize(24, 24)
+        # m_edit_btn.setFixedSize(24, 24)
         m_edit_btn.clicked.connect(lambda: self._edit_module(m_row))
         
         m_del_btn = QPushButton("🗑️")
-        m_del_btn.setFixedSize(24, 24)
+        # m_del_btn.setFixedSize(24, 24)
         m_del_btn.clicked.connect(lambda: self._delete_module(pm_id))
         m_add_item_btn = QPushButton("➕ Item")
-        m_add_item_btn.setFixedSize(60, 24)
+        # m_add_item_btn.setFixedSize(60, 24)
         m_add_item_btn.clicked.connect(lambda: self._add_item(pm_id, m_qty)) # Pass m_qty here
 
         m_add_from_mod_btn = QPushButton("📂 From Library") # New button
-        m_add_from_mod_btn.setFixedSize(100, 24)
+        # m_add_from_mod_btn.setFixedSize(100, 24)
         m_add_from_mod_btn.clicked.connect(lambda: self._add_from_module(pm_id)) # Pass pm_id here
 
         mod_header.addWidget(toggle_btn)
@@ -403,10 +453,13 @@ class QuotationPreviewPage(QWidget):
                 actions_layout.setContentsMargins(2, 2, 2, 2)
                 actions_layout.setSpacing(4)
                 
-                i_edit = QPushButton("✏️"); i_edit.setFixedSize(20, 20)
+                mini_btn_style = "QPushButton { padding: 4px; font-size: 12px; background: transparent; border: none; } QPushButton:hover { background: #e2e8f0; border-radius: 2px; }"
+                i_edit = QPushButton("✏️"); # i_edit.setFixedSize(20, 20)
+                i_edit.setStyleSheet(mini_btn_style)
                 i_edit.clicked.connect(lambda _, it=item, pmid=pm_id: self._edit_item(pmid, it))
                 
-                i_del = QPushButton("🗑️"); i_del.setFixedSize(20, 20)
+                i_del = QPushButton("🗑️"); # i_del.setFixedSize(20, 20)
+                i_del.setStyleSheet("QPushButton { padding: 4px; font-size: 12px; background: #fee2e2; border: 1px solid #fecaca; border-radius: 2px; } QPushButton:hover { background: #fecaca; }")
                 i_del.clicked.connect(lambda _, it=item, pmid=pm_id: self._delete_item(pmid, it))
                 
                 actions_layout.addWidget(i_edit)

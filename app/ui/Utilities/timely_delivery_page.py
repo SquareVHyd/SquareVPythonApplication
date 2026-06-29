@@ -26,7 +26,7 @@ FILE_PATH = r"G:\My Drive\SVEE2\01 CompanyDocs\10 ZED\04 Records\02-Filled Recor
 COLUMNS = [
     "Buyer (Bill to)", "Description of Goods", "Quantity", "Per", 
     "Order Date", "Despatched Date", "Delivery Date", "Invoice No.", 
-    "e-Way Bill No.", "Sl No", "HSN/SAC", "Unit Rate", "Amount", "Total Amount", "Lapped Days"
+    "e-Way Bill No.", "Sl No", "HSN/SAC", "Unit Rate", "Amount", "Total Amount", "Lapped Days", "Google_pic_Links"
 ]
 NUMERIC_COLS = ["Quantity", "Unit Rate", "Amount", "Total Amount"]
 DATE_COLS = ["Order Date", "Despatched Date", "Delivery Date"]

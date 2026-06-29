@@ -38,7 +38,34 @@ class PanelModulePage(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        header = QHBoxLayout()
+        btn_style = """
+            QPushButton {
+                background-color: #e0f2fe;
+                color: #0c4a6e;
+                border: 1px solid #bae6fd;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover { background-color: #bae6fd; }
+            QPushButton:pressed { background-color: #7dd3fc; }
+            QPushButton:disabled { background-color: transparent; color: #94a3b8; border: none; }
+            QComboBox {
+                background-color: white;
+                border: 1px solid #cbd5e1;
+                border-radius: 4px;
+                padding: 5px 12px;
+                font-size: 13px;
+                color: #0f172a;
+            }
+            QComboBox::drop-down {
+                border-left: 1px solid #cbd5e1;
+                width: 24px;
+            }
+        """
+        self.setStyleSheet(self.styleSheet() + btn_style)
+
         
         self.back_btn = QPushButton("⬅️ Back to Quotations List") # Parent is QuotationDetailsPage
         self.back_btn.clicked.connect(lambda: self.main_window.show_quotations())
@@ -50,6 +77,20 @@ class PanelModulePage(QWidget):
         self.panel_selection_combo = QComboBox()
         self.panel_selection_combo.setPlaceholderText("Select Panel for New Module")
         self.panel_selection_combo.setMinimumWidth(200)
+        self.panel_selection_combo.setStyleSheet("""
+            QComboBox {
+                background-color: white;
+                border: 1px solid #cbd5e1;
+                border-radius: 4px;
+                padding: 5px 12px;
+                font-size: 13px;
+                color: #0f172a;
+            }
+            QComboBox::drop-down {
+                border-left: 1px solid #cbd5e1;
+                width: 24px;
+            }
+        """)
         self.panel_selection_combo.currentIndexChanged.connect(self.refresh_table)
 
         self.preview_btn = QPushButton("👁️ Preview All Panels")
@@ -69,6 +110,20 @@ class PanelModulePage(QWidget):
         self.edit_btn.clicked.connect(self.edit_module)
         
         self.delete_btn = QPushButton("🗑️ Delete")
+        self.delete_btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #fee2e2;
+                        color: #991b1b;
+                        border: 1px solid #fecaca;
+                        padding: 6px 12px;
+                        border-radius: 4px;
+                        font-weight: bold;
+                        font-size: 13px;
+                    }
+                    QPushButton:hover { background-color: #fecaca; }
+                    QPushButton:pressed { background-color: #fca5a5; }
+                    QPushButton:disabled { background-color: transparent; color: #94a3b8; border: none; }
+                """)
         self.delete_btn.clicked.connect(self.delete_module)
 
         self.copy_btn = QPushButton("📋 Copy")
@@ -77,19 +132,25 @@ class PanelModulePage(QWidget):
         self.paste_btn = QPushButton("📋 Paste")
         self.paste_btn.clicked.connect(self.paste_module)
 
-        header.addWidget(self.back_btn)
-        header.addWidget(self.title_label)
-        header.addWidget(self.panel_selection_combo)
-        header.addWidget(self.preview_btn)
-        header.addWidget(self.items_btn)
-        header.addStretch()
-        header.addWidget(self.search_box)
-        header.addWidget(self.add_btn)
-        header.addWidget(self.edit_btn)
-        header.addWidget(self.delete_btn)
-        header.addWidget(self.copy_btn)
-        header.addWidget(self.paste_btn)
-        layout.addLayout(header)
+        header_top = QHBoxLayout()
+        header_top.addWidget(self.back_btn)
+        header_top.addWidget(self.title_label)
+        header_top.addStretch()
+        header_top.addWidget(self.panel_selection_combo)
+        header_top.addWidget(self.preview_btn)
+        header_top.addWidget(self.items_btn)
+
+        header_bottom = QHBoxLayout()
+        header_bottom.addWidget(self.search_box)
+        header_bottom.addStretch()
+        header_bottom.addWidget(self.add_btn)
+        header_bottom.addWidget(self.edit_btn)
+        header_bottom.addWidget(self.delete_btn)
+        header_bottom.addWidget(self.copy_btn)
+        header_bottom.addWidget(self.paste_btn)
+
+        layout.addLayout(header_top)
+        layout.addLayout(header_bottom)
 
         self.table = SearchableTable()
         self.table.setColumnCount(12)

@@ -34,6 +34,22 @@ class ModuleItemsDialog(QDialog):
         QShortcut(QKeySequence("Ctrl+N"), self, activated=self._add_items); QShortcut(QKeySequence("Ctrl+E"), self, activated=self._edit_item)
         QShortcut(QKeySequence("Delete"), self, activated=self._remove_items); QShortcut(QKeySequence("Ctrl+F"), self, activated=lambda: self.search_box.setFocus())
 
+        btn_style = """
+            QPushButton {
+                background-color: #f1f5f9;
+                color: #0f172a;
+                border: 1px solid #cbd5e1;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover { background-color: #e0f2fe; }
+            QPushButton:pressed { background-color: #e2e8f0; }
+            QPushButton:disabled { background-color: transparent; color: #94a3b8; border: none; }
+        """
+        self.setStyleSheet(self.styleSheet() + btn_style)
+
     def _load_types_and_initial_items(self):
         types = self.type_service.get_all_module_types(); self.type_combo.blockSignals(True)
         init_idx = -1

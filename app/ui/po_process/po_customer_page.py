@@ -54,6 +54,35 @@ class POCustomerPage(QWidget):
     def setup_ui(self):
         self.layout = QVBoxLayout(self)
 
+        btn_style = """
+            QPushButton {
+                background-color: #e0f2fe;
+                color: #0c4a6e;
+                border: 1px solid #bae6fd;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover { background-color: #bae6fd; }
+            QPushButton:pressed { background-color: #7dd3fc; }
+            QPushButton:disabled { background-color: transparent; color: #94a3b8; border: none; }
+            QComboBox {
+                background-color: white;
+                border: 1px solid #cbd5e1;
+                border-radius: 4px;
+                padding: 5px 12px;
+                font-size: 13px;
+                color: #0f172a;
+            }
+            QComboBox::drop-down {
+                border-left: 1px solid #cbd5e1;
+                width: 24px;
+            }
+        """
+        self.setStyleSheet(self.styleSheet() + btn_style)
+
+
         # Header Section
         header = QHBoxLayout()
         self.title_label = QLabel("PO Customers")
@@ -245,10 +274,11 @@ class POCustomerPage(QWidget):
                 actions_layout.setContentsMargins(2, 2, 2, 2)
                 actions_layout.setSpacing(4)
                 
-                i_edit = QPushButton("✏️"); i_edit.setFixedSize(20, 20)
+                mini_btn_style = "QPushButton { padding: 0px; font-size: 12px; background: transparent; border: none; } QPushButton:hover { background: #e2e8f0; border-radius: 2px; }"
+                i_edit = QPushButton("✏️"); i_edit.setFixedSize(20, 20); i_edit.setStyleSheet(mini_btn_style)
                 i_edit.clicked.connect(lambda _, it=item: self.edit_item(it))
                 
-                i_del = QPushButton("🗑️"); i_del.setFixedSize(20, 20)
+                i_del = QPushButton("🗑️"); i_del.setFixedSize(20, 20); i_del.setStyleSheet("QPushButton { padding: 0px; font-size: 12px; background: #fee2e2; border: 1px solid #fecaca; border-radius: 2px; } QPushButton:hover { background: #fecaca; }")
                 i_del.clicked.connect(lambda _, it=item: self.delete_item(it))
                 
                 actions_layout.addWidget(i_edit)

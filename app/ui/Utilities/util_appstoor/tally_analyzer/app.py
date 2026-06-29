@@ -273,11 +273,14 @@ class TallyHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
             self.send_error(500, str(e))
             
     def send_json(self, data, status=200):
-        self.send_response(status)
-        self.send_header('Content-Type', 'application/json')
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.end_headers()
-        self.wfile.write(json.dumps(data).encode('utf-8'))
+        try:
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps(data).encode('utf-8'))
+        except (ConnectionError, OSError) as e:
+            print(f"Client disconnected, failed to send JSON response: {e}")
 
     def do_GET(self):
         parsed_url = urllib.parse.urlparse(self.path)

@@ -401,7 +401,8 @@ class QuotationService:
         params = {
             "panel_id": kwargs.get('panel_id'), "ing_og": kwargs.get('ing_og'), "qty": kwargs.get('qty'),
             "type_id": kwargs.get('type_id'), "pole": kwargs.get('pole'), "ka": kwargs.get('ka'),
-            "release": kwargs.get('release'), "protection": kwargs.get('protection'), "remark": kwargs.get('remark'), "pm_id": pm_id
+            "release": kwargs.get('release'), "protection": kwargs.get('protection'), "remark": kwargs.get('remark'),
+            "pm_id": pm_id
         }
         with get_session() as session:
             try:
@@ -410,6 +411,28 @@ class QuotationService:
             except Exception:
                 session.rollback()
                 raise
+
+    def get_feeder_details(self, pm_id):
+        """Fetches FeederId and Description for a given panel module."""
+        query = text('SELECT "FeederId", "Description" FROM public."tbl_PanelModules" WHERE "ID" = :pm_id')
+        with get_session() as session:
+            try:
+                result = session.execute(query, {"pm_id": pm_id}).fetchone()
+                return result if result else ("", "")
+            except Exception as e:
+                print(f"Error fetching feeder details: {e}")
+                return ("", "")
+
+    def update_feeder_details(self, pm_id, feeder_id, description):
+        """Updates FeederId and Description for a panel module."""
+        query = text('UPDATE public."tbl_PanelModules" SET "FeederId" = :feeder_id, "Description" = :description WHERE "ID" = :pm_id')
+        with get_session() as session:
+            try:
+                session.execute(query, {"pm_id": pm_id, "feeder_id": feeder_id, "description": description})
+                session.commit()
+            except Exception as e:
+                session.rollback()
+                raise e
 
     def update_module_item(self, old_pm_id, old_drive_description, pm_id, drive_description, bom, lp, discount, selection, sequence_number=None):
         """Updates an existing module item record using its composite primary key.

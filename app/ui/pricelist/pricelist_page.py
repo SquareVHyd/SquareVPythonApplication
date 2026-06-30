@@ -15,7 +15,11 @@ from PySide6.QtWidgets import (
     QComboBox,
     QTextEdit,
     QDialogButtonBox,
-    QStatusBar
+    QStatusBar,
+    QStackedWidget,
+    QFrame,
+    QSplitter,
+    QButtonGroup,
 )
 
 from PySide6.QtGui import QShortcut, QKeySequence
@@ -31,6 +35,7 @@ from app.ui.searchable_table import (
 )
 from app.utils.worker_thread import Worker
 from app.config.ui_state import UIStateManager
+from app.ui.components.menu_button import MenuButton
 
 
 class BulkPriceUpdateDialog(QDialog):
@@ -64,29 +69,101 @@ class BulkPriceUpdateDialog(QDialog):
 
 class PriceListPage(QWidget):
 
+    PAGE_PRICELIST = 0
+    PAGE_REVISION  = 1
+
     def __init__(self):
-
         super().__init__()
-
         self.service = PriceListService()
-
         self._cache = []
         self._search_timer = QTimer()
-
         self._search_timer.setSingleShot(True)
-        self._search_timer.timeout.connect(
-            self._perform_search
-        )
-
+        self._search_timer.timeout.connect(self._perform_search)
         self._worker = None
 
-        self.setup_ui()
+        self._setup_sidebar_layout()
         self._populate_filter_lookups()
-
         self._load_async()
         self._restore_state()
 
+    # ==================================================================
+    # Sidebar shell  (same pattern as QuotationDetailsPage)
+    # ==================================================================
+    def _setup_sidebar_layout(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.setHandleWidth(1)
+        splitter.setStyleSheet("QSplitter::handle { background-color: #e2e8f0; }")
+
+        # ── Sidebar ───────────────────────────────────────────────────
+        sidebar = QFrame()
+        sidebar.setObjectName("sidebar")
+        sidebar.setMinimumWidth(200)
+        sidebar.setMaximumWidth(400)
+        sb_layout = QVBoxLayout(sidebar)
+        sb_layout.setContentsMargins(20, 20, 20, 20)
+        sb_layout.setSpacing(12)
+
+        title_lbl = QLabel("Price List")
+        title_lbl.setObjectName("appTitle")
+        title_lbl.setAlignment(Qt.AlignCenter)
+
+        self._btn_group = QButtonGroup(self)
+        self._btn_group.setExclusive(True)
+
+        self.btn_pricelist = MenuButton("🧾 Price List")
+        self.btn_pricelist.setToolTip("View and manage the full price list")
+        self.btn_pricelist.clicked.connect(lambda: self._switch_page(self.PAGE_PRICELIST))
+
+        self.btn_revision = MenuButton("📜 Revision History")
+        self.btn_revision.setToolTip("View price revision history with trend charts")
+        self.btn_revision.clicked.connect(lambda: self._switch_page(self.PAGE_REVISION))
+
+        self._btn_group.addButton(self.btn_pricelist, self.PAGE_PRICELIST)
+        self._btn_group.addButton(self.btn_revision,  self.PAGE_REVISION)
+
+        sb_layout.addWidget(title_lbl)
+        sb_layout.addWidget(self.btn_pricelist)
+        sb_layout.addWidget(self.btn_revision)
+        sb_layout.addStretch()
+
+        # ── Stacked content ───────────────────────────────────────────
+        self.pages = QStackedWidget()
+
+        # Page 0 – original price list UI (built below)
+        self._pricelist_panel = QWidget()
+        self.pages.addWidget(self._pricelist_panel)
+
+        # Page 1 – revision history (lazy-imported to avoid circular)
+        from app.ui.pricelist.price_revision_page import PriceRevisionPage
+        self._revision_page = PriceRevisionPage()
+        self.pages.addWidget(self._revision_page)
+
+        splitter.addWidget(sidebar)
+        splitter.addWidget(self.pages)
+        splitter.setStretchFactor(1, 1)
+        root.addWidget(splitter)
+
+        self.setStyleSheet(
+            "#sidebar { background-color: #f8fafc; } "
+            "#appTitle { font-size: 20px; font-weight: bold; margin-bottom: 16px; padding-left: 10px; } "
+            "QHeaderView::section { background-color: #fce4ec; border: 1px solid #e2e8f0; padding: 4px; font-weight: bold; }"
+        )
+
+        # Start on price list page
+        self.pages.setCurrentIndex(self.PAGE_PRICELIST)
+        self.btn_pricelist.setChecked(True)
+
+        # Now build the original price-list UI inside _pricelist_panel
+        self.setup_ui()
+
+    def _switch_page(self, index: int):
+        self.pages.setCurrentIndex(index)
+
     def setup_ui(self):
+        """Build the price-list panel content inside self._pricelist_panel."""
         btn_style = """
             QPushButton {
                 background-color: #e0f2fe;
@@ -113,10 +190,11 @@ class PriceListPage(QWidget):
                 width: 24px;
             }
         """
-        self.setStyleSheet(self.styleSheet() + btn_style)
+        self._pricelist_panel.setStyleSheet(
+            self._pricelist_panel.styleSheet() + btn_style
+        )
 
-
-        layout = QVBoxLayout(self)
+        layout = QVBoxLayout(self._pricelist_panel)
 
         header = QHBoxLayout()
 

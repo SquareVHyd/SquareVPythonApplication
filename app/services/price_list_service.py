@@ -79,3 +79,15 @@ class PriceListService:
     def get_pricelist_view_data(self):
         """Pass-through to repository to fetch data from vwPriceList."""
         return self.repository.get_pricelist_view_data()
+
+    def get_price_revisions(self, price_list_id):
+        """Returns price revision history (oldest first) for a specific item."""
+        return self.repository.get_price_revisions(price_list_id)
+
+    def get_all_price_revisions(self):
+        """Returns all revision records joined with item description."""
+        return self.repository.get_all_price_revisions()
+
+    def get_updated_items_revisions(self):
+        """Returns only items with more than one revision entry (price was changed)."""
+        return self.repository.get_updated_items_revisions()

@@ -13,6 +13,7 @@ from app.ui.quotations.module_items.module_items_viewer_dialog import ModuleItem
 from app.ui.quotations.panels.panel_delegates import ComboBoxDelegate, DoubleSpinBoxDelegate
 from app.ui.quotations.module_items.module_item_form import ModuleItemForm
 from app.ui.quotations.module_items.select_module_items_dialog import SelectModuleItemsDialog
+from app.ui.quotations.modules.panel_module_feeder_dialog import PanelModuleFeederDialog
 
 # Shared dropdown lists for Panel Modules
 INGOG_LIST = ["Incomer", "Outgoing", "R_Outgoing", "L_Outgoing", "Buscoupler", "Change Over", "Add-ON", "Sub-Incomer", "Sub-Outgoing", "Sub-Incomer-2", "Sub-Outgoing-2", "Busduct"]
@@ -106,6 +107,9 @@ class PanelModulePage(QWidget):
         self.add_btn = QPushButton("➕ Add Module")
         self.add_btn.clicked.connect(self.add_module)
         
+        self.feeder_btn = QPushButton("🔌 Add FeederId")
+        self.feeder_btn.clicked.connect(self._open_feeder_dialog)
+        
         self.edit_btn = QPushButton("✏️ Edit")
         self.edit_btn.clicked.connect(self.edit_module)
         
@@ -144,6 +148,7 @@ class PanelModulePage(QWidget):
         header_bottom.addWidget(self.search_box)
         header_bottom.addStretch()
         header_bottom.addWidget(self.add_btn)
+        header_bottom.addWidget(self.feeder_btn)
         header_bottom.addWidget(self.edit_btn)
         header_bottom.addWidget(self.delete_btn)
         header_bottom.addWidget(self.copy_btn)
@@ -153,10 +158,11 @@ class PanelModulePage(QWidget):
         layout.addLayout(header_bottom)
 
         self.table = SearchableTable()
-        self.table.setColumnCount(12)
+        self.table.setColumnCount(14)
         self.table.setHorizontalHeaderLabels([
             "ID", "PanelID", "Panel Name", "In/Out", "Qty", 
-            "TypeID", "Module Type", "Pole", "KA", "Release", "Protection", "Remark"
+            "TypeID", "Module Type", "Pole", "KA", "Release", "Protection", "Remark",
+            "Feeder ID", "Description"
         ])
         self.table.hideColumn(0)
         self.table.hideColumn(1)
@@ -272,15 +278,28 @@ class PanelModulePage(QWidget):
         except Exception as e:
             print(f"Error loading module types for delegate: {e}")
 
+    def _fetch_data_with_feeders(self, panel_id, quote_id):
+        if panel_id is not None:
+            rows = self.service.get_panel_modules_by_panel_id(panel_id)
+        else:
+            rows = self.service.get_all_modules_by_quote(quote_id)
+            
+        extended_rows = []
+        for r in rows:
+            pm_id = r[0]
+            feeder_id, description = self.service.get_feeder_details(pm_id)
+            extended_rows.append(tuple(list(r) + [feeder_id, description]))
+        return extended_rows
+
     def refresh_table(self):
         if self._worker or self.quote_id is None: return
         panel_id = self.panel_selection_combo.currentData()
         if panel_id is not None:
             self.status_bar.showMessage(f"Loading modules for panel ID: {panel_id}...")
-            self._worker = Worker(self.service.get_panel_modules_by_panel_id, panel_id)
+            self._worker = Worker(self._fetch_data_with_feeders, panel_id, self.quote_id)
         else:
             self.status_bar.showMessage("Loading all panel modules...")
-            self._worker = Worker(self.service.get_all_modules_by_quote, self.quote_id)
+            self._worker = Worker(self._fetch_data_with_feeders, None, self.quote_id)
         self._worker.result.connect(self._on_data_loaded)
         self._worker.start()
 
@@ -295,7 +314,8 @@ class PanelModulePage(QWidget):
         self.table.setSortingEnabled(False)
         self.table.setRowCount(len(rows))
         display_to_sql_map = {
-            0: 0, 1: 1, 2: 2, 3: 4, 4: 5, 5: 6, 6: 7, 7: 8, 8: 9, 9: 10, 10: 11, 11: 12
+            0: 0, 1: 1, 2: 2, 3: 4, 4: 5, 5: 6, 6: 7, 7: 8, 8: 9, 9: 10, 10: 11, 11: 12,
+            12: 13, 13: 14
         }
         editable_display_cols = {3, 4, 6, 7, 8, 9, 10, 11}
         for r, row in enumerate(rows):
@@ -351,6 +371,25 @@ class PanelModulePage(QWidget):
                 self.refresh_table()
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to update panel module: {e}")
+
+    def _open_feeder_dialog(self):
+        selected = self.table.selectionModel().selectedRows()
+        if not selected:
+            QMessageBox.warning(self, "Selection Required", "Please select a module to add/edit Feeder details.")
+            return
+        row = selected[0].row()
+        pm_id = int(self.table.item(row, 0).text())
+        
+        qty_str = self.table.item(row, 4).text()
+        try:
+            qty = int(float(qty_str))
+        except (ValueError, TypeError):
+            qty = 1
+            
+        dialog = PanelModuleFeederDialog(pm_id, qty=qty, parent=self)
+        if dialog.exec() == QDialog.Accepted:
+            QMessageBox.information(self, "Success", "Feeder details updated successfully.")
+            self.refresh_table()
 
     def delete_module(self):
         selected = self.table.selectionModel().selectedRows()

@@ -266,3 +266,63 @@ class PriceListRepository:
             except Exception as e:
                 session.rollback()
                 raise e
+
+    def get_price_revisions(self, price_list_id):
+        """Returns price revision history for a given PriceListID, oldest first."""
+        query = text("""
+            SELECT
+                "PriceListID",
+                "ListPrice",
+                "UpdatedAt"
+            FROM public."tblPriceRevision"
+            WHERE "PriceListID" = :price_list_id
+            ORDER BY "UpdatedAt" ASC
+        """)
+        with get_session() as session:
+            result = session.execute(query, {"price_list_id": price_list_id})
+            return result.fetchall()
+
+    def get_all_price_revisions(self):
+        """Returns all price revision records joined with item description, newest first."""
+        query = text("""
+            SELECT
+                r."PriceListID",
+                p."ItemDescription",
+                p."Model",
+                r."ListPrice",
+                r."UpdatedAt"
+            FROM public."tblPriceRevision" r
+            JOIN public."tblPriceList" p ON r."PriceListID" = p."ID"
+            ORDER BY r."UpdatedAt" DESC
+        """)
+        with get_session() as session:
+            result = session.execute(query)
+            return result.fetchall()
+
+    def get_updated_items_revisions(self):
+        """
+        Returns revision records for items that appear MORE THAN ONCE in
+        tblPriceRevision (i.e. PriceListIDs with count > 1), effectively
+        showing only items whose price has been revised at least once.
+        Results are ordered newest-first.
+        """
+        query = text("""
+            SELECT
+                r."PriceListID",
+                p."ItemDescription",
+                p."Model",
+                r."ListPrice",
+                r."UpdatedAt"
+            FROM public."tblPriceRevision" r
+            JOIN public."tblPriceList" p ON r."PriceListID" = p."ID"
+            WHERE r."PriceListID" IN (
+                SELECT "PriceListID"
+                FROM public."tblPriceRevision"
+                GROUP BY "PriceListID"
+                HAVING COUNT(*) > 1
+            )
+            ORDER BY r."UpdatedAt" DESC
+        """)
+        with get_session() as session:
+            result = session.execute(query)
+            return result.fetchall()
